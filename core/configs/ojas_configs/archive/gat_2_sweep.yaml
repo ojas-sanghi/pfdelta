@@ -1,0 +1,89 @@
+config_type: simple_batch
+job_parameters:
+  time: "24:00:00"
+  p: "cpu-gpu-v100"
+  gpus: 1
+  body: "uv run __launch__"
+batch_name: gat_sweep_hidden_fixed
+dataset:
+  datasets:
+  - add_bus_type: false
+    case_name: case14_seeds
+    model: PFNet
+    name: pfdeltaPFNet
+    root_dir: /mnt/home/donti-group-shared/hf_pfdelta_data
+    split: train
+    task: 4.1
+    transform: pfnet_data_mean0_var1
+  - add_bus_type: false
+    case_name: case14_seeds
+    model: PFNet
+    name: pfdeltaPFNet
+    root_dir: /mnt/home/donti-group-shared/hf_pfdelta_data
+    split: val
+    task: 4.1
+    transform: pfnet_data_mean0_var1
+functional:
+  config: graph_nn_conv
+  cpu: false
+  is_debug: false
+  run_location: gat/gat_sweep_hidden_fixed_0715/
+  run_name: sweep_layers_%n_layers_hidden_%hidden_channels_lr_%lr_epochs_%epochs
+  seed: 42
+  trainer_name: gnn_trainer
+model:
+  in_channels: 6
+  hidden_channels: _manual_list(32, 512)
+  out_channels: 6
+  n_layers: _manual_list(5, 30)
+  name: gat
+optim:
+  optimizer:
+    lr: _manual_list(0.00001, 0.001 | 1e-5, 1e-3)
+    name: Adam
+  train_params:
+    batch_size: 64
+    epochs: _manual_list(20, 250)
+    train_loss:
+    - name: GNNTorchLoss
+      output_name: bus__y
+      torch_nn_name: MSELoss
+    - name: pfn_masked_mse
+      regularize: false
+    - name: pfn_masked_mse
+      regularize: true
+    - model: PFNet
+      name: universal_power_balance
+    - keyword: pbl_pf
+      loss_name: PBL Max
+      name: recycle_loss
+      recycled_parameter: power_balance_max
+    - keyword: pbl_pf
+      loss_name: PBL L2
+      name: recycle_loss
+      recycled_parameter: power_balance_l2
+  val_params:
+    batch_size: 64
+    early_stop:
+      decrease_by: 0.01
+      decrease_for: 10
+      needs_best_every: 15
+    report_every: 5
+    val_loss:
+    - name: pfn_masked_mse
+      regularize: false
+    - name: pfn_masked_mse
+      regularize: true
+    - name: GNNTorchLoss
+      output_name: bus__y
+      torch_nn_name: MSELoss
+    - model: PFNet
+      name: universal_power_balance
+    - keyword: pbl_pf
+      loss_name: PBL Max
+      name: recycle_loss
+      recycled_parameter: power_balance_max
+    - keyword: pbl_pf
+      loss_name: PBL L2
+      name: recycle_loss
+      recycled_parameter: power_balance_l2

@@ -1,8 +1,9 @@
 import types
 
 import torch
-from torch import nn
+from torch import Tensor, nn
 from torch_geometric.data import HeteroData
+from torch_geometric.utils import get_laplacian, to_undirected
 
 from core.utils.registry import registry
 from core.utils.pf_losses_utils import PowerBalanceLoss
@@ -223,3 +224,72 @@ class Masked_L2_loss:
             loss = loss + self.regcoeff * self.criterion(output_reg, target_reg)
 
         return loss
+
+@registry.register_loss("dirichlet_energy")
+class DirichletEnergyLoss:
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+
+    def get_graph_laplacian(
+        self,
+        edge_index: Tensor,
+        num_nodes: int,
+        normalization: str = "sym",
+        make_undirected: bool = True,
+    ) -> torch.Tensor:
+        """
+        Build a sparse Laplacian matrix L for the graph.
+
+        Args:
+            edge_index: COO edge indices of shape [2, E].
+            num_nodes: Number of nodes N.
+            normalization: One of {None, "sym", "rw"} for unnormalized,
+                symmetric, or random-walk Laplacian.
+            make_undirected: If True, symmetrize edges before building L.
+
+        Returns:
+            A sparse COO tensor of shape [N, N] with dtype float32 on the
+            same device as edge_index.
+        """
+        if make_undirected:
+            edge_index = to_undirected(edge_index, num_nodes=num_nodes)
+
+        lap_edge_index, lap_edge_weight = get_laplacian(
+            edge_index, normalization=normalization, num_nodes=num_nodes
+        )
+        device = edge_index.device
+        lap = torch.sparse_coo_tensor(
+            lap_edge_index,
+            lap_edge_weight.to(dtype=torch.float32, device=device),
+            (num_nodes, num_nodes),
+            device=device,
+            dtype=torch.float32,
+        ).coalesce()
+        return lap
+
+    def dirichlet_energy(self, x: Tensor, laplacian: torch.Tensor) -> torch.Tensor:
+        """
+        Compute Dirichlet energy E = tr(X^T L X) for node features X and Laplacian L.
+
+        Args:
+            x: Node features of shape [N, F] (or [N]); will be treated as [N, 1].
+            laplacian: Sparse COO Laplacian of shape [N, N].
+
+        Returns:
+            Scalar tensor with the Dirichlet energy.
+        """
+        if x.dim() == 1:
+            x = x.unsqueeze(-1)
+        assert x.size(0) == laplacian.size(0) == laplacian.size(1)
+
+        # Sparse matmul: Lx has shape [N, F]
+        x = x.clone().detach()
+        Lx = torch.sparse.mm(laplacian, x)
+        energy_matrix = x.T.matmul(Lx)  # [F, F]
+        energy = torch.trace(energy_matrix)
+        energy = energy / x.size(0)  # divide by v
+        # eps = torch.finfo(energy.dtype).eps
+        # return torch.log(energy.sqrt() + eps)
+        # return torch.log(energy.sqrt())
+        # return energy.sqrt()
+        return energy
