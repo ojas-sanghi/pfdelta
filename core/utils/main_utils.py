@@ -663,10 +663,11 @@ def console(sbatch_locations, sbatch_scripts, jobs):
     message = r"""
 Action                                           |  Command
 -------------------------------------------------------------
-Launch all jobs                                  |  Launch
+Launch all jobs                                  |  launch
 Print config of ith job                          |  i
 Print sbatch script of ith job                   |  script i
-Abort all launches                               |  Exit
+Save sbatch scripts, don't launch jobs           |  save
+Abort all launches                               |  exit
 
 Input: """
 
@@ -674,7 +675,7 @@ Input: """
         command = input(message)
         if command.lower() == "exit":
             return 1
-        elif command == "Launch":
+        elif command.lower() == "launch":
             for sbatch_location in sbatch_locations:
                 launch_command = f"sbatch {sbatch_location}"
                 out = subprocess.run(launch_command, shell=True)
@@ -705,5 +706,8 @@ Input: """
             print("\n\n")
             print(json.dumps(config, indent=4))
             print("\n\n")
+        elif command.lower() == "save":
+            print("\nScripts saved! Exiting...\n")
+            return 0
         else:
             print("\nInvalid input!\n\n")

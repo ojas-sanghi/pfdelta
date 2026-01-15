@@ -1,9 +1,9 @@
 # Trainer for GNNs
 import copy
-from tqdm import tqdm
 
 import torch
 from torch_geometric.loader.dataloader import DataLoader
+from tqdm import tqdm
 
 from core.trainers.base_trainer import BaseTrainer
 from core.utils.registry import registry
@@ -16,7 +16,12 @@ class GNNTrainer(BaseTrainer):
     ):
         return DataLoader
 
-    def train_one_epoch(self, train_dataloader):
+    def train_one_epoch(self, train_dataloader, print_de=False):
+        # self._print_data_stats()
+        # import sys
+
+        # sys.exit()
+
         running_loss = [0.0] * len(self.train_loss)
         losses = [0.0] * len(self.train_loss)
         message = f"Epoch {self.epoch + 1} \U0001f3cb"
@@ -33,6 +38,12 @@ class GNNTrainer(BaseTrainer):
                 losses[i] = loss_func(outputs, data)
                 running_loss[i] += losses[i].item()
 
+            if print_de:
+                de = self.model.energies
+                energies = [t.item() for t in de]
+                # print("Dirichlet Energies at each layer: ", energies)
+                print(energies)
+
             # Backpropagate
             losses[0].backward()
             self.grad_manip(losses)
@@ -44,10 +55,13 @@ class GNNTrainer(BaseTrainer):
         return running_loss
 
     @torch.no_grad()
-    def calc_one_val_error(self, val_dataloader, val_num):
+    def calc_one_val_error(self, val_dataloader, val_num, max_val=0, print_de=False):
         self.model.eval()
         running_losses = [0.0] * len(self.val_loss)
-        num_val_datasets = len(self.datasets[1:])
+        if max_val == 0:
+            num_val_datasets = len(self.datasets[1:])
+        else:
+            num_val_datasets = max_val
         message = f"Processing validation set {val_num + 1}/{num_val_datasets}"
         for data in tqdm(val_dataloader, desc=message):
             # Move data to device
@@ -58,6 +72,12 @@ class GNNTrainer(BaseTrainer):
             for i, loss_func in enumerate(self.val_loss):
                 loss = loss_func(outputs, data)
                 running_losses[i] += loss.item()
+
+            if print_de:
+                de = self.model.energies
+                energies = [t.item() for t in de]
+                # print("Dirichlet Energies at each layer: ", energies)
+                print(energies)
 
         return running_losses
 

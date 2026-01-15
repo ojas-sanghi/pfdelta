@@ -14,7 +14,7 @@ dataset:
     case_name: case118
     model: PFNet
     name: pfdeltaPFNet
-    root_dir: data/pfdelta_data # TODO: update root_dir if needed
+    root_dir: /mnt/home/donti-group-shared/pfdelta_data
     split: train
     task: 1.1
     transform: pfnet_data_mean0_var1
@@ -22,7 +22,7 @@ dataset:
     case_name: case118
     model: PFNet
     name: pfdeltaPFNet
-    root_dir: data/pfdelta_data
+    root_dir: /mnt/home/donti-group-shared/pfdelta_data
     split: val
     task: 1.1
     transform: pfnet_data_mean0_var1

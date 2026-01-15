@@ -150,13 +150,23 @@ if __name__ == "__main__":
             })
 
     data = pd.DataFrame(rows)
+    # Rename models for display
+    data['Model'] = data['Model'].replace({
+        'CANOS': 'CANOS-PF',
+        'GNS': 'GNS-S'
+    })
 
     # MAKE FIGURE
     datasets = ["case57", "case118", "case500"]
+    dataset_titles = ["Case 57", "Case 118", "Case 500"]
     n = len(datasets)
+
+    # Increase font sizes globally
+    plt.rcParams.update({'font.size': 16})
+
     fig, axes = plt.subplots(1, n, figsize=(6 * n, 5))
     axes = axes.flatten()
-    for i, dataset in enumerate(datasets):
+    for i, (dataset, title) in enumerate(zip(datasets, dataset_titles)):
         ax1 = axes[i]
         subset = data[data["Dataset"] == dataset]
 
@@ -168,8 +178,9 @@ if __name__ == "__main__":
             ax=ax1,
             color="skyblue",
             width=0.3,
-            label="Time",
-            alpha=0.7
+            label="Runtime (s)" if i == 0 else "",
+            alpha=0.7,
+            legend=False
         )
 
         # Right y-axis: Error
@@ -181,8 +192,9 @@ if __name__ == "__main__":
             ax=ax2,
             color="red",
             width=0.3,
-            label="Error",
-            alpha=0.7
+            label="Power Balance \n Loss (Mean)" if i == 0 else "",
+            alpha=0.7,
+            legend=False
         )
 
         shift = 0.15
@@ -201,7 +213,8 @@ if __name__ == "__main__":
 
 
         # Fix ax1 labels
-        ax1.set_title(dataset)
+        ax1.set_title(title, fontweight='bold')
+        ax1.set_xlabel('')
         ax1.set_ylim(0, 0.08)
         if i > 0:
             ax1.set_ylabel("")
@@ -209,13 +222,15 @@ if __name__ == "__main__":
             ax1.set_yticks([0, 0.02, 0.04, 0.06, 0.08])
             ax1.tick_params(left=False, labelleft=False)
         else:
+            ax1.set_ylabel("Runtime (s)", fontweight='bold')
             ax1.set_yticks([0, 0.02, 0.04, 0.06, 0.08])
         ax1.yaxis.grid(True)
 
         # Fix ax2 labels
         ax2.set_yscale("log")
-        ax2.set_ylim(1e-2, 150)
+        ax2.set_ylim(1e-2, 200)
         if i == len(datasets) - 1:
+            ax2.set_ylabel("Power Balance Loss (Mean)", fontweight='bold')
             ax2.set_yticks([1e-2, 1e-1, 1e-0, 1e+1, 1e+2]) # 1e+2])
         else:
             ax2.set_ylabel("")
@@ -223,6 +238,12 @@ if __name__ == "__main__":
             # ax2.set_yticks([1e-2, 1e-1, 1e-0, 1e+1, 1e+2]) # 1e+2])
             # ax2.tick_params(left=False, labelleft=False)
         # ax2.yaxis.grid(True)
+
+        # Add legend for first subplot only (top right)
+        if i == 0:
+            lines1, labels1 = ax1.get_legend_handles_labels()
+            lines2, labels2 = ax2.get_legend_handles_labels()
+            ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right', fontsize=14)
 
     plt.tight_layout()
     plt.subplots_adjust(wspace=0.05)

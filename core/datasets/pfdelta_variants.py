@@ -260,7 +260,7 @@ class PFDeltaCANOS(PFDeltaDataset):
         Build a CANOS-compatible `HeteroData` object.
 
         This method constructs the base heterogeneous graph via
-        \PFDeltaDataset.build_heterodata`, then prunes it to
+        PFDeltaDataset.build_heterodata`, then prunes it to
         retain only the node and edge types used by CANOS 
         (bus, PV, PQ, slack).
 
@@ -364,6 +364,9 @@ class PFDeltaPFNet(PFDeltaDataset):
         normalized_case_name=None,
     ):
         self.normalized_case_name = normalized_case_name
+        
+        if self.normalized_case_name is None:
+            self.normalized_case_name = case_name
 
         if pre_transform:
             if pre_transform == "pfnet_data_mean0_var1":
