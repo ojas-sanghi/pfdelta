@@ -1,18 +1,21 @@
+import glob
 import json
 import os
-from tqdm import tqdm
-from functools import partial
-import glob
-import torch
-from torch_geometric.data import InMemoryDataset, HeteroData, download_url, extract_tar
-from typing import Any, Dict
 import warnings
+from functools import partial
+from typing import Any, Dict
+
+import torch
+from torch_geometric.data import HeteroData, InMemoryDataset, download_url, extract_tar
+from tqdm import tqdm
+
+# from core.datasets.data_stats import canos_pfdelta_stats, pfnet_pfdata_stats
+from core.datasets.data_stats import pfnet_pfdata_stats
 from core.datasets.dataset_utils import (
     canos_pf_data_mean0_var1,
     canos_pf_slack_mean0_var1,
     pfnet_data_mean0_var1,
 )
-from core.datasets.data_stats import canos_pfdelta_stats, pfnet_pfdata_stats
 from core.utils.registry import registry
 
 
@@ -226,11 +229,27 @@ class PFDeltaDataset(InMemoryDataset):
                 "test": ["case14", "case30", "case57"],
             },
         }
+        
+        # parser
+        # task3.4_casewahtev_casewat
+        # update dicts
+        # set case name to correct thing
 
         super().__init__(
             self.root, transform, pre_transform, pre_filter, force_reload=force_reload
         )
         self.load(self.split)
+        
+        # bash script to get data_stats and manually update that
+        """
+        from core.datasets.pfdelta_dataset import PFDeltaDataset as dataset
+        ds = dataset(root_dir="/mnt/home/donti-group-shared/pfdelta_data", task=1.3, split="train", case_name="case500")
+        ds._data
+        
+        ds._data["bus"].x.mean(dim=0)
+        ds._data[("bus", "branch", "bus")].edge_attr.mean(dim=0)
+        """
+        
 
     def _split_to_idx(self):
         return {"train": 0, "val": 1, "test": 2}[self.split]
@@ -1093,11 +1112,11 @@ class PFDeltaDataset(InMemoryDataset):
                     f"{split_str}.pt",
                 )
             print(f"Loading {split} dataset from {processed_path}")
-            self.data, self.slices = torch.load(processed_path)
+            self.data, self.slices = torch.load(processed_path, weights_only=False)
         else:
             processed_path = os.path.join(self.processed_dir, f"{split}.pt")
             print(f"Loading {split} dataset from {processed_path}")
-            self.data, self.slices = torch.load(processed_path)
+            self.data, self.slices = torch.load(processed_path, weights_only=False)
 
 #############################################################################
 #      CUSTOM PFDELTADATASET CLASSES TAILORED TO PER-MODEL PREPROCESSING
@@ -1345,7 +1364,7 @@ class PFDeltaCANOS(PFDeltaDataset):
         Build a CANOS-compatible `HeteroData` object.
 
         This method constructs the base heterogeneous graph via
-        \PFDeltaDataset.build_heterodata`, then prunes it to
+        PFDeltaDataset.build_heterodata`, then prunes it to
         retain only the node and edge types used by CANOS 
         (bus, PV, PQ, slack).
 
@@ -1449,6 +1468,9 @@ class PFDeltaPFNet(PFDeltaDataset):
         normalized_case_name=None,
     ):
         self.normalized_case_name = normalized_case_name
+
+        if self.normalized_case_name is None:
+            self.normalized_case_name = case_name
 
         if pre_transform:
             if pre_transform == "pfnet_data_mean0_var1":
