@@ -85,7 +85,7 @@ functional:
   cpu: false
   is_debug: false
   run_location: gen_jan0726/task33/graphconv
-  run_name: sweep_seed_%seed_layers_%n_layers_hidden_256_lr_%lr_epochs_100
+  run_name: seed_%seed_layers_%n_layers_hidden_256_lr_%lr_epochs_100
   seed: _manual_list(42, 43, 44)
   trainer_name: gnn_trainer
 model:

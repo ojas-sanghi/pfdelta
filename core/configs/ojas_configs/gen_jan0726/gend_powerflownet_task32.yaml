@@ -85,8 +85,8 @@ functional:
   config: powerflownet
   cpu: false
   is_debug: false
-  run_location: gen_jan0726/run1/task32/powerflownet
-  run_name: sweep_seed_%seed_hidden_256_lr_%lr_epochs_100
+  run_location: gen_jan0726/task32/powerflownet
+  run_name: seed_%seed_hidden_256_lr_%lr_epochs_100
   seed: _manual_list(42, 43, 44)
   trainer_name: gnn_trainer
 model:
