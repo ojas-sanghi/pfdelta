@@ -8,6 +8,7 @@ dependencies = [
     "altair>=6.0.0",
     "ipykernel>=7.1.0",
     "matplotlib>=3.10.8",
+    "nbformat>=5.10.4",
     "numpy>=2.3.5",
     "pandas>=2.3.3",
     "plotly>=6.5.0",
