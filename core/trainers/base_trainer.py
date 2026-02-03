@@ -753,8 +753,7 @@ class BaseTrainer:
     def interpret_val_performance(self, old_best, last_value):
         """
         This method is used to calculate the performance of the model over the
-        validation sets. The default one is to use only the leading val error
-        and average it over all validation datasets.
+        validation sets. The default one is to use only the first val error.
         """
         val_params = self.config["optim"]["val_params"]
         use_first_only = val_params.get("use_first_only", True)
