@@ -194,31 +194,37 @@ class PFDeltaDataset(InMemoryDataset):
             "approaching infeasible": None,  # no test set for this regime
             "near infeasible": {"n": 200, "n-1": 200, "n-2": 200},
         }
+        
+        all_other_cases = self.all_case_names.copy()
+        if task == 3.1:
+                all_other_cases.remove(self.case_name)
 
         self.task_split_config = {
             3.1: {
                 "train": [self.case_name],
-                "val": self.all_case_names,
-                "test": self.all_case_names,
+                "val": self.case_name,
+                "test": all_other_cases,
             },
             3.2: {
                 "train": ["case14", "case30", "case57"],
-                "val": ["case118", "case500", "case2000"],
+                "val": ["case14", "case30", "case57"],
                 "test": ["case118", "case500", "case2000"],
             },
             3.3: {
                 "train": ["case118", "case500", "case2000"],
-                "val": ["case14", "case30", "case57"],
+                "val": ["case118", "case500", "case2000"],
                 "test": ["case14", "case30", "case57"],
             },
         }
         
         #case_name: case14_30_118
         if task == 3.4:
+            all_other_cases = self.all_case_names.copy()
             cases = case_name.split("_")
             for i in range(1, len(cases)):
                 # set to [case14, case30, case118]
                 cases[i] = "case" + cases[i]
+                all_other_cases.remove(cases[i])
             
             size_per_perturbation = 18000 // len(cases)  # total 18000 samples split evenly
             self.task_config[3.4] = {
@@ -226,10 +232,12 @@ class PFDeltaDataset(InMemoryDataset):
                 "near infeasible": {"n": 0, "n-1": 0, "n-2": 0},
             }
             
+            # todo: exclude 2000 for now
+            all_other_cases.remove("case2000")
             self.task_split_config[3.4] = {
                 "train": cases,
-                "val": self.all_case_names[:-1], # todo: exclude 2000 for now
-                "test": self.all_case_names[:-1],
+                "val": cases, 
+                "test": all_other_cases, 
             }
 
         super().__init__(
