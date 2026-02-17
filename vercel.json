@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "bash scripts/interactive_exports/prepare_interactive_exports.sh",
+  "outputDirectory": "notebooks/interactive_exports"
+}
