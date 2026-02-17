@@ -6,8 +6,8 @@
 
 set -euo pipefail
 
-for i in {79..179}; do
-  config="gen_feb0126_graphconv_task31/gen_feb0126_graphconv_task31_${i}"
+for i in {0..59}; do
+  config="gen_feb0126_powerflownet_task31/gen_feb0126_powerflownet_task31_${i}"
   echo "Running config: $config"
   uv run python main.py --config "$config"
 done

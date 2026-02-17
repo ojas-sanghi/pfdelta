@@ -1,0 +1,19 @@
+#!/bin/bash
+
+#SBATCH --time=168:00:00
+#SBATCH -p cpu-gpu-v100
+#SBATCH --gpus=1
+
+set -euo pipefail
+
+# Access array index
+IDX=$SLURM_ARRAY_TASK_ID
+config="gen_feb0126_powerflownet_task33/gen_feb0126_powerflownet_task33_$IDX"
+
+echo "Running job $IDX on $SLURM_NODELIST"
+echo "Running config: $config"
+
+uv run python main.py --config "$config"
+
+# to run
+# sbatch --array=0-11 core/configs/ojas_configs/gen_feb0126/run_powerflownet_task33.sh
