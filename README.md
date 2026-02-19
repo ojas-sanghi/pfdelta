@@ -224,3 +224,14 @@ year={2025},
 url={https://openreview.net/forum?id=Gi1HtsTAkv}
 }
 ```
+
+## GridFM Integration (PFDelta)
+
+This repository now includes a native GridFM-style GPS/GINE model and PFDelta dataset adapter for zero-shot checkpoint loading and fine-tuning.
+
+- Model: `core/models/gridfm_transformer.py` (`name: gridfm_transformer`)
+- Dataset variant: `core/datasets/pfdelta_gridfm.py` (`name: pfdeltaGridFM`)
+- Fine-tune configs: `core/configs/examples/gridfm_task_1_3_finetune.yaml`, `core/configs/examples/gridfm_transfer_pf_task_1_3.yaml`
+- Smoke test: `uv run python scripts/gridfm_smoke_test.py --checkpoint examples/models/GridFM_v0_2.pth`
+
+Detailed implementation plan and checklist: `docs/gridfm_integration_plan.md`.
