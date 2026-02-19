@@ -170,6 +170,23 @@ pfdelta_data/
         └── test.pt
 ```
 
+
+### GridFM Integration (GPS Transformer)
+--------------------
+
+PFΔ now includes a native GridFM-style GPS model integration for zero-shot checkpoint loading and fine-tuning.
+
+- Model: `core/models/gridfm_gps.py` (`gridfm_gps`)
+- Dataset adapter: `core/datasets/pfdelta_gridfm.py` (`pfdelta_gridfm`)
+- Losses: `gridfm_masked_mse`, `gridfm_mse`
+- Docs: `docs/gridfm_integration.md` and `docs/gridfm_integration_plan.md`
+
+Quick verification command:
+
+```bash
+uv run python scripts/gridfm/download_and_verify_gridfm.py
+```
+
 ### Results Replication
 --------------------
 
