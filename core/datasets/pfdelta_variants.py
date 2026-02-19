@@ -468,3 +468,41 @@ class PFDeltaPFNet(PFDeltaDataset):
             data = self.pre_transform(data)
 
         return data
+
+
+@registry.register_dataset("pfdeltaGridFM")
+class PFDeltaGridFM(PFDeltaDataset):
+    """PFDelta dataset variant that materializes GridFM-compatible fields."""
+
+    def __init__(
+        self,
+        root_dir="data",
+        case_name="",
+        split="train",
+        model="GridFM",
+        task=1.3,
+        add_bus_type=False,
+        transform=None,
+        pre_transform=None,
+        pre_filter=None,
+        force_reload=False,
+    ):
+        super().__init__(
+            root_dir=root_dir,
+            case_name=case_name,
+            split=split,
+            model=model,
+            task=task,
+            add_bus_type=add_bus_type,
+            transform=transform,
+            pre_transform=pre_transform,
+            pre_filter=pre_filter,
+            force_reload=force_reload,
+        )
+
+    def build_heterodata(self, pm_case: dict, is_cpf_sample: bool = False):
+        from core.models.gridfm_utils import ensure_gridfm_fields
+
+        data = super().build_heterodata(pm_case, is_cpf_sample=is_cpf_sample)
+        ensure_gridfm_fields(data)
+        return data
