@@ -208,9 +208,33 @@ class BaseTrainer:
         # Gather inputs and modify them if necessary
         model_inputs = copy.deepcopy(model)
         del model_inputs["name"]
+        model_inputs.pop("pretrained_path", None)
+        model_inputs.pop("pretrained_strict", None)
         self.customize_model_init_inputs(model_inputs)
         # Initialize model
         self.model = model_class(**model_inputs).to(self.device)
+
+        pretrained_path = model.get("pretrained_path")
+        if pretrained_path:
+            strict = model.get("pretrained_strict", False)
+            checkpoint = torch.load(pretrained_path, map_location=self.device)
+            if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+                checkpoint = checkpoint["state_dict"]
+            if isinstance(checkpoint, dict):
+                checkpoint = {
+                    k.replace("model.", ""): v for k, v in checkpoint.items()
+                }
+                model_state = self.model.state_dict()
+                checkpoint = {
+                    k: v
+                    for k, v in checkpoint.items()
+                    if k in model_state and tuple(model_state[k].shape) == tuple(v.shape)
+                }
+            missing, unexpected = self.model.load_state_dict(checkpoint, strict=strict)
+            print(
+                f"Loaded pretrained weights from {pretrained_path}. "
+                + f"Missing keys: {len(missing)}. Unexpected keys: {len(unexpected)}."
+            )
 
     def customize_model_init_inputs(self, model_inputs):
         r"""This method allows the user to modify the inputs before initiali-
