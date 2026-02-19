@@ -1,0 +1,63 @@
+config_type: simple_batch
+job_parameters:
+  time: "24:00:00"
+  p: "cpu-gpu-v100"
+  gpus: 1
+  body: "uv run __launch__"
+batch_name: moe_variants_sweep
+functional:
+  config: moe_variants_sweep
+  run_location: runs/moe_variants/sweep
+  run_name: moe_variant_%model_name_seed_%seed
+  seed: 42
+  cpu: false
+  is_debug: false
+  trainer_name: gnn_trainer
+model:
+  name: _manual_list(graph_moe_v01_baseline, graph_moe_v02_size_only, graph_moe_v03_learned_router, graph_moe_v04_dual_router, graph_moe_v05_dense_gate, graph_moe_v06_noisy_topk, graph_moe_v07_gumbel, graph_moe_v08_hierarchical, graph_moe_v09_hop_mixed, graph_moe_v10_tag_only, graph_moe_v11_sage_only, graph_moe_v12_weak_strong)
+  in_dim: 6
+  hidden_dim: _manual_list(128, 256)
+  out_dim: 6
+  n_layers: _manual_list(4, 6)
+dataset:
+  datasets:
+    - name: pfdeltadata
+      root_dir: /mnt/home/donti-group-shared/pfdelta_data
+      case_name: _manual_list(case14, case30, case57, case118, case500)
+      split: train
+      task: 1.3
+      model: PFNet
+      transform: pfnet_data_mean0_var1
+    - name: pfdeltadata
+      root_dir: /mnt/home/donti-group-shared/pfdelta_data
+      case_name: _manual_list(case14, case30, case57, case118, case500)
+      split: val
+      task: 1.3
+      model: PFNet
+      transform: pfnet_data_mean0_var1
+optim:
+  optimizer:
+    name: Adam
+    lr: _manual_list(0.0005, 0.001)
+  train_params:
+    batch_size: 64
+    epochs: 80
+    train_loss:
+      - name: GNNTorchLoss
+        torch_nn_name: MSELoss
+        output_name: bus__y
+      - name: pfn_masked_mse
+        regularize: false
+  val_params:
+    batch_size: 64
+    report_every: 5
+    early_stop:
+      decrease_by: 0.01
+      decrease_for: 10
+      needs_best_every: 15
+    val_loss:
+      - name: pfn_masked_mse
+        regularize: false
+      - name: GNNTorchLoss
+        torch_nn_name: MSELoss
+        output_name: bus__y
