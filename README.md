@@ -224,3 +224,34 @@ year={2025},
 url={https://openreview.net/forum?id=Gi1HtsTAkv}
 }
 ```
+
+## GridFM integration (PFDelta)
+
+This repository now includes a native PFDelta integration of a GridFM-style GPS/GINE model for:
+- **Zero-shot testing** from a pre-trained GridFM checkpoint.
+- **Fine-tuning** on PFDelta task splits.
+- **Training from scratch** with the same architecture family.
+
+### New components
+- Model: `core/models/gridfm_gps.py` (`name: gridfm_gps` in config)
+- Adapter utilities: `core/models/gridfm_utils.py`
+- Dataset variant: `pfdeltaGridFM` in `core/datasets/pfdelta_variants.py`
+- Example configs:
+  - `core/configs/examples/gridfm_task_1_3_zeroshot.yaml`
+  - `core/configs/examples/gridfm_task_1_3_finetune.yaml`
+
+### Quick start
+1. Place a checkpoint at `artifacts/GridFM_v0_2.pth`.
+2. Run zero-shot smoke setup:
+   ```bash
+   python main.py --config examples/gridfm_task_1_3_zeroshot
+   ```
+3. Run fine-tuning:
+   ```bash
+   python main.py --config examples/gridfm_task_1_3_finetune
+   ```
+
+The integration auto-constructs GridFM tensors from PFDelta `HeteroData`:
+- `bus.x_gridfm` = `[Pd,Qd,Pg,Qg,Vm,Va,PQ,PV,REF]`
+- `bus.y_gridfm` = `[Pd,Qd,Pg,Qg,Vm,Va]`
+- `edge_attr_gridfm` = `[G,B]` computed from branch `(r,x)`.
