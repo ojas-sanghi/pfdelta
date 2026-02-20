@@ -1,0 +1,105 @@
+# =============================================================================
+# GridFM Zero-Shot Evaluation
+# =============================================================================
+# Loads the pre-trained GridFM v0.2 weights and evaluates on PFDelta test data
+# WITHOUT any fine-tuning (epochs: 0).
+#
+# Usage:
+#   python main.py --config examples/gridfm_zero_shot
+#
+# Prerequisites:
+#   - Download GridFM_v0_2.pth (see scripts/test_gridfm.py)
+#   - PFDelta dataset at root_dir
+# =============================================================================
+
+config_type: experiment
+
+model:
+  name: gridfm
+
+  # ── GPSTransformer architecture (must match v0.2 checkpoint) ──────────────
+  input_dim:      9       # [Pd, Qd, Pg, Qg, Vm, Va, PQ, PV, REF]
+  hidden_size:    256
+  output_dim:     6       # [Pd, Qd, Pg, Qg, Vm, Va]
+  edge_dim:       2       # [G, B] Y-bus admittances
+  pe_dim:         20      # Random Walk PE walk length
+  num_layers:     8       # GPS message-passing layers
+  attention_head: 8
+  dropout:        0.1
+  mask_dim:       6
+  mask_value:     0.0
+  learn_mask:     false
+
+  # ── Data normalisation ────────────────────────────────────────────────────
+  # baseMVA_orig: system MVA base used to convert p.u. → MW
+  baseMVA_orig:   100.0
+  # baseMVA_data: if 0, computed per-batch as max(|P|).
+  # For zero-shot, setting a fixed value improves consistency with training.
+  baseMVA_data:   0.0
+
+  # ── Pre-trained weights ───────────────────────────────────────────────────
+  # Path relative to the project root (pfdelta/) or absolute.
+  pretrained_path: examples/models/GridFM_v0_2.pth
+
+  # ── Power-flow masking ────────────────────────────────────────────────────
+  # Apply standard PF mask in forward pass (PQ→Vm,Va; PV→Qg,Va; REF→Pg,Qg)
+  apply_pf_mask:  true
+
+dataset:
+  datasets:
+    # ── Training placeholder (required by PFDelta config validation) ──────
+    # Use a small split so loading is fast; training is skipped (epochs: 0).
+    - name: pfdeltaPFNet
+      case_name: case118
+      root_dir: /mnt/home/donti-group-shared/pfdelta_data
+      split: train
+      task: 1.1
+      model: PFNet
+      add_bus_type: true
+      transform: pfnet_data_mean0_var1
+
+    # ── Validation / evaluation sets ──────────────────────────────────────
+    - name: pfdeltaPFNet
+      case_name: case118
+      root_dir: /mnt/home/donti-group-shared/pfdelta_data
+      split: val
+      task: 1.1
+      model: PFNet
+      add_bus_type: true
+      transform: pfnet_data_mean0_var1
+
+    - name: pfdeltaPFNet
+      case_name: case30
+      root_dir: /mnt/home/donti-group-shared/pfdelta_data
+      split: test
+      task: 1.1
+      model: PFNet
+      add_bus_type: true
+      transform: pfnet_data_mean0_var1
+
+functional:
+  trainer_name: gridfm_trainer
+  run_name: gridfm_zero_shot_v0_2
+  run_location: gridfm_zero_shot
+  seed: 42
+  is_debug: false
+  cpu: false
+
+optim:
+  optimizer:
+    name: Adam
+    lr: 0.0001
+
+  train_params:
+    # epochs: 0 → zero-shot (no training, only evaluation)
+    epochs: 0
+    batch_size: 64
+    train_loss:
+      - name: gridfm_masked_mse
+
+  val_params:
+    batch_size: 64
+    report_every: 1
+    val_loss:
+      - name: gridfm_masked_mse
+      - name: gridfm_eval_rmse
