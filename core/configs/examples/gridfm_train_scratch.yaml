@@ -48,60 +48,48 @@ dataset:
     # ── Training sets (multi-grid) ────────────────────────────────────────
     # To replicate GridFM's multi-grid pre-training, add multiple case sizes.
     # Each dataset entry becomes part of the combined training set.
-    - name: pfdeltaPFNet
+    - name: pfdeltadata
       case_name: case30
       root_dir: /mnt/home/donti-group-shared/pfdelta_data
       split: train
       task: 1.1
-      model: PFNet
-      add_bus_type: true
-      transform: pfnet_data_mean0_var1
+      model: GridFM
 
-    - name: pfdeltaPFNet
+    - name: pfdeltadata
       case_name: case57
       root_dir: /mnt/home/donti-group-shared/pfdelta_data
       split: train
       task: 1.1
-      model: PFNet
-      add_bus_type: true
-      transform: pfnet_data_mean0_var1
+      model: GridFM
 
-    - name: pfdeltaPFNet
+    - name: pfdeltadata
       case_name: case118
       root_dir: /mnt/home/donti-group-shared/pfdelta_data
       split: train
       task: 1.1
-      model: PFNet
-      add_bus_type: true
-      transform: pfnet_data_mean0_var1
+      model: GridFM
 
     # ── Validation sets ───────────────────────────────────────────────────
-    - name: pfdeltaPFNet
+    - name: pfdeltadata
       case_name: case30
       root_dir: /mnt/home/donti-group-shared/pfdelta_data
       split: val
       task: 1.1
-      model: PFNet
-      add_bus_type: true
-      transform: pfnet_data_mean0_var1
+      model: GridFM
 
-    - name: pfdeltaPFNet
+    - name: pfdeltadata
       case_name: case57
       root_dir: /mnt/home/donti-group-shared/pfdelta_data
       split: val
       task: 1.1
-      model: PFNet
-      add_bus_type: true
-      transform: pfnet_data_mean0_var1
+      model: GridFM
 
-    - name: pfdeltaPFNet
+    - name: pfdeltadata
       case_name: case118
       root_dir: /mnt/home/donti-group-shared/pfdelta_data
       split: val
       task: 1.1
-      model: PFNet
-      add_bus_type: true
-      transform: pfnet_data_mean0_var1
+      model: GridFM
 
 functional:
   trainer_name: gridfm_trainer

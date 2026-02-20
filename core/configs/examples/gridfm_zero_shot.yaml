@@ -49,33 +49,27 @@ dataset:
   datasets:
     # ── Training placeholder (required by PFDelta config validation) ──────
     # Use a small split so loading is fast; training is skipped (epochs: 0).
-    - name: pfdeltaPFNet
+    - name: pfdeltadata
       case_name: case118
       root_dir: /mnt/home/donti-group-shared/pfdelta_data
       split: train
       task: 1.1
-      model: PFNet
-      add_bus_type: true
-      transform: pfnet_data_mean0_var1
+      model: GridFM
 
     # ── Validation / evaluation sets ──────────────────────────────────────
-    - name: pfdeltaPFNet
+    - name: pfdeltadata
       case_name: case118
       root_dir: /mnt/home/donti-group-shared/pfdelta_data
       split: val
       task: 1.1
-      model: PFNet
-      add_bus_type: true
-      transform: pfnet_data_mean0_var1
+      model: GridFM
 
-    - name: pfdeltaPFNet
+    - name: pfdeltadata
       case_name: case30
       root_dir: /mnt/home/donti-group-shared/pfdelta_data
       split: test
       task: 1.1
-      model: PFNet
-      add_bus_type: true
-      transform: pfnet_data_mean0_var1
+      model: GridFM
 
 functional:
   trainer_name: gridfm_trainer

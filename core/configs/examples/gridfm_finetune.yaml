@@ -45,24 +45,20 @@ model:
 dataset:
   datasets:
     # ── Training set ─────────────────────────────────────────────────────
-    - name: pfdeltaPFNet
+    - name: pfdeltadata
       case_name: case118
       root_dir: /mnt/home/donti-group-shared/pfdelta_data
       split: train
       task: 1.1
-      model: PFNet
-      add_bus_type: true
-      transform: pfnet_data_mean0_var1
+      model: GridFM
 
     # ── Validation set ────────────────────────────────────────────────────
-    - name: pfdeltaPFNet
+    - name: pfdeltadata
       case_name: case118
       root_dir: /mnt/home/donti-group-shared/pfdelta_data
       split: val
       task: 1.1
-      model: PFNet
-      add_bus_type: true
-      transform: pfnet_data_mean0_var1
+      model: GridFM
 
 functional:
   trainer_name: gridfm_trainer
