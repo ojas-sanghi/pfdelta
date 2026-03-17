@@ -19,7 +19,6 @@ class GNNTrainer(BaseTrainer):
     def train_one_epoch(self, train_dataloader, print_de=False):
         # self._print_data_stats()
         # import sys
-
         # sys.exit()
 
         running_loss = [0.0] * len(self.train_loss)

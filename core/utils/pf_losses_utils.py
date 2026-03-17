@@ -78,6 +78,17 @@ class PowerBalanceLoss:
             src,
             dst,  # line connections
         )
+        
+        """
+        from betsegaw:
+        Are you training CANOS on PBL? If so, I also ran into that issue. The patch I used to get rid of the "NaNs" was setting slack values directly to 0 in the "old" code. I didn't find out the root issue why CANOS was outputting NaNs when trained on PBL, so the above fix is only a patch (it breaks the computational graph, per Alvaro) Here are more details:
+
+        the nan issues were gone after setting the elements indexed by slack indices to 0, but I'm not 100% sure if this masked the issue or fixed it: 
+        """
+        slack_idx = data["slack", "slack_link", "bus"].edge_index[1]
+        delta_P[slack_idx] = 0
+        delta_Q[slack_idx] = 0
+        
         self.delta_P, self.delta_Q = delta_P, delta_Q
 
         # 4. Use complex mismatch to calculate PBL losses
