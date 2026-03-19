@@ -1,14 +1,7 @@
-config_type: simple_batch
-job_parameters:
-  time: "144:00:00"
-  p: "cpu-gpu-v100"
-  gpus: 1
-  body: "uv run __launch__"
-batch_name: gen_pbl_mar0326_canos_task31
+config_type: experiment
 dataset:
   datasets:
   - add_bus_type: true
-    # case_name: _connected_list(casename -- case14, case30, case57, case118, case500 | case14, case30, case57, case118, case500)
     case_name: case118
     model: CANOS
     name: pfdeltaCANOS
@@ -16,16 +9,12 @@ dataset:
     split: train
     task: 1.3
   - add_bus_type: true
-    # case_name: _connected_list(casename -- case14, case30, case57, case118, case500 | case14, case30, case57, case118, case500)
     case_name: case118
     model: CANOS
     name: pfdeltaCANOS
     root_dir: /mnt/home/donti-group-shared/pfdelta_data
     split: val
     task: 1.3
-
-
-
   - add_bus_type: true
     case_name: case14
     model: CANOS
@@ -33,7 +22,6 @@ dataset:
     root_dir: /mnt/home/donti-group-shared/pfdelta_data
     split: val
     task: 1.3
-
   - add_bus_type: true
     case_name: case30
     model: CANOS
@@ -41,7 +29,6 @@ dataset:
     root_dir: /mnt/home/donti-group-shared/pfdelta_data
     split: val
     task: 1.3
-
   - add_bus_type: true
     case_name: case57
     model: CANOS
@@ -49,7 +36,6 @@ dataset:
     root_dir: /mnt/home/donti-group-shared/pfdelta_data
     split: val
     task: 1.3
-
   - add_bus_type: true
     case_name: case118
     model: CANOS
@@ -57,7 +43,6 @@ dataset:
     root_dir: /mnt/home/donti-group-shared/pfdelta_data
     split: val
     task: 1.3
-
   - add_bus_type: true
     case_name: case500
     model: CANOS
@@ -65,19 +50,19 @@ dataset:
     root_dir: /mnt/home/donti-group-shared/pfdelta_data
     split: val
     task: 1.3
-  
 functional:
+  config: ojas_configs/gen_pbl_mar0326/canos_task31_pbl.yaml
   cpu: true
   is_debug: false
   run_location: gen_pbl_mar0326/task31/canos
-  run_name: case118/seed=%seed_case=case118_lr=%lr_hidden=%hidden_dim_steps=%k_steps
-  seed: _manual_list(42, 43, 44)
+  run_name: case118/seed=42_case=case118_lr=0.0005_hidden=128_steps=15_0
+  seed: 42
   trainer_name: gnn_trainer
 model:
   dataset: _include_
-  hidden_dim: _manual_list(128)
+  hidden_dim: 128
   include_sent_messages: true
-  k_steps: _manual_list(15)
+  k_steps: 15
   name: canos_pf
 optim:
   lr_scheduler:
@@ -92,7 +77,7 @@ optim:
       name: StepLR
       step_size: 4
   optimizer:
-    lr: _manual_list(0.0005 | 0.0005)
+    lr: 0.0005
     name: Adam
     weight_decay: 0.0
   train_params:
@@ -105,24 +90,18 @@ optim:
       loss1: canos_pf_mse
       loss2: pf_constraint_violation
       name: combined_loss
-      # output_name: combined_loss
-    # - name: pf_constraint_violation
-    #   model: CANOS
     - lamb: 0
       loss1: canos_pf_mse
       loss2: pf_constraint_violation
       name: combined_loss
-      # output_name: canos_pf_mse_only
     - lamb: 1
       loss1: canos_pf_mse
       loss2: pf_constraint_violation
       name: combined_loss
-      # output_name: sum_of_losses
     - keyword: pbl_pf
       loss_name: PBL Max
       name: recycle_loss
       recycled_parameter: power_balance_max
-
   val_params:
     batch_size: 64
     early_stop:
@@ -141,12 +120,10 @@ optim:
       loss1: canos_pf_mse
       loss2: pf_constraint_violation
       name: combined_loss
-      # output_name: canos_pf_mse_only
     - lamb: 1
       loss1: canos_pf_mse
       loss2: pf_constraint_violation
       name: combined_loss
-      # output_name: sum_of_losses
     - keyword: pbl_pf
       loss_name: PBL Max
       name: recycle_loss
