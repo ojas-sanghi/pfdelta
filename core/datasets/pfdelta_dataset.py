@@ -197,12 +197,12 @@ class PFDeltaDataset(InMemoryDataset):
         
         all_other_cases = self.all_case_names.copy()
         if task == 3.1:
-                all_other_cases.remove(self.case_name)
+            all_other_cases.remove(self.case_name)
 
         self.task_split_config = {
             3.1: {
                 "train": [self.case_name],
-                "val": self.case_name,
+                "val": [self.case_name],
                 "test": all_other_cases,
             },
             3.2: {
