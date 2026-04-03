@@ -75,7 +75,7 @@ class CombinedLoss:
 
         loss1_printname = getattr(self.loss1, "loss_name", loss1)
         loss2_printname = getattr(self.loss2, "loss_name", loss2)
-        self.loss_name = loss1_printname + "+" + loss2_printname
+        self.loss_name = loss1_printname + " + " + str(self.lamb) + " * " + loss2_printname
 
     def initialize_loss(self, loss_name, loss_inputs):
         # This is for pytorch losses
@@ -224,6 +224,7 @@ class Masked_L2_loss:
             loss = loss + self.regcoeff * self.criterion(output_reg, target_reg)
 
         return loss
+
 
 @registry.register_loss("dirichlet_energy")
 class DirichletEnergyLoss:
