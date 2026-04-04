@@ -722,11 +722,18 @@ class PFDeltaDataset(InMemoryDataset):
         - File discovery is based on fixed directory naming conventions 
         within each case folder.
         """
-        dataset_size = (
-            self.n_samples
-            if self.n_samples > 0
-            else self.task_config[self.task][self.feasibility_type][self.perturbation]
+        total_dataset_size = self.task_config[self.task][self.feasibility_type][
+            self.perturbation
+        ]
+        dataset_size = self.n_samples if self.n_samples > 0 else total_dataset_size
+
+        assert (
+            dataset_size
+            <= self.task_config[self.task][self.feasibility_type][self.perturbation]
+        ), (
+            f"Requested n_samples {self.n_samples} exceeds available {total_dataset_size} samples, "
         )
+        
         data_list = []
 
         if self.feasibility_type == "feasible":
@@ -759,9 +766,9 @@ class PFDeltaDataset(InMemoryDataset):
 
         return data_list
 
-    def get_shuffle_file_path(self, grid_type: str, case_root: str) -> str:
+    def get_shuffle_file_path(self, perturbation_type: str, case_root: str) -> str:
         """
-        Return the path to the shuffle mapping JSON file for a given grid type.
+        Return the path to the shuffle mapping JSON file for a given perturbation type.
 
         This utility determines which shuffle mapping to use when building 
         processed train/validation/test splits. For large-scale systems such 
@@ -770,8 +777,8 @@ class PFDeltaDataset(InMemoryDataset):
 
         Parameters
         ----------
-        grid_type : str
-            Grid size category (e.g., 'small', 'medium', 'large') 
+        perturbation_type : str
+            Perturbation type category (e.g., 'n', 'n-1', 'n-2') 
             used to locate the correct shuffle file.
         case_root : str
             Path to the case directory, used to detect special naming rules.
@@ -783,11 +790,11 @@ class PFDeltaDataset(InMemoryDataset):
         """
         if "case2000" in case_root:
             return os.path.join(
-                self.root, "shuffle_files", grid_type, "raw_shuffle_2000.json"
+                self.root, "shuffle_files", perturbation_type, "raw_shuffle_2000.json"
             )
         else:
             return os.path.join(
-                self.root, "shuffle_files", grid_type, "raw_shuffle.json"
+                self.root, "shuffle_files", perturbation_type, "raw_shuffle.json"
             )
 
     def shuffle_split_and_save_data(self, case_root: str, split: str) -> Dict[str, list]:
