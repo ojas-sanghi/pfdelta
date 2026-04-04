@@ -78,7 +78,7 @@ functional:
   trainer_name: gnn_trainer
 model:
   dataset: _include_
-  hidden_dim: _manual_list(128)
+  hidden_dim: _manual_list(256)
   include_sent_messages: true
   k_steps: _manual_list(15)
   name: canos_pf
