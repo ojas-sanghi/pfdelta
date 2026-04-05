@@ -109,9 +109,9 @@ def find_best_run(root_folder, error_key):
 
 
 if __name__ == "__main__":
-    root_path = "/mnt/home/donti-group-shared/ojas/pfdelta/runs/gen_feb0126"
+    root_path = "/home/osanghi/pfdelta/runs/gen_feb0126"
     task = "task31"
-    model = "graphconv"
+    model = "powerflownet"
     case = "case14"
     error_key = "PBL Mean"
 
