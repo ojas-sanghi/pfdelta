@@ -1,6 +1,7 @@
 config_type: simple_batch
 job_parameters:
   p: mit_normal_gpu,mit_preemptable
+  exclude: node1928,node4007
   requeue: __novalue__
   body: "source ~/.bashrc\nuv run __launch__"
   mem: 64G
