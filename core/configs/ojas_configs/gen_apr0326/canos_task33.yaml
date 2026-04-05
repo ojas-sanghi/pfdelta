@@ -1,4 +1,13 @@
-e
+config_type: simple_batch
+job_parameters:
+  p: mit_normal_gpu,mit_preemptable
+  requeue: __novalue__
+  body: "source ~/.bashrc\nuv run __launch__"
+  mem: 64G
+  G: 1
+  output: canos_%j.out
+  signal: USR1@90
+  time: "05:59:00"
 batch_name: gen_apr0326_canos_task33
 dataset:
   datasets:

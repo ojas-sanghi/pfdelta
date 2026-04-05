@@ -1,6 +1,8 @@
 #!/bin/bash
 
 #SBATCH -p mit_normal_gpu,mit_preemptable
+#SBATCH --exclude=node1928
+
 #SBATCH --requeue
 #SBATCH --mem=64G
 #SBATCH -G 1
