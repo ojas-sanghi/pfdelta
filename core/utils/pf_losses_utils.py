@@ -85,7 +85,7 @@ class PowerBalanceLoss:
 
         the nan issues were gone after setting the elements indexed by slack indices to 0, but I'm not 100% sure if this masked the issue or fixed it: 
         """
-        slack_idx = data["slack", "slack_link", "bus"].edge_index[1]
+        slack_idx = self.get_slack_idx(data)
         delta_P[slack_idx] = 0
         delta_Q[slack_idx] = 0
         
@@ -108,6 +108,21 @@ class PowerBalanceLoss:
         self.power_balance_max = delta_PQ_magn.max()
 
         return self.power_balance_mean
+
+    @staticmethod
+    def get_slack_idx(data):
+        """Return bus indices for slack buses across CANOS- and PFNet-style graphs."""
+        slack_edge_type = ("slack", "slack_link", "bus")
+        if slack_edge_type in data.edge_types:
+            return data[slack_edge_type].edge_index[1]
+
+        if hasattr(data["bus"], "bus_type"):
+            return (data["bus"].bus_type == 3).nonzero(as_tuple=True)[0]
+
+        raise AttributeError(
+            "PowerBalanceLoss could not infer slack bus indices from either "
+            "('slack', 'slack_link', 'bus').edge_index or data['bus'].bus_type."
+        )
 
     @staticmethod
     def calculate_PBL(
@@ -293,7 +308,7 @@ class PowerBalanceLoss:
             Qnet[pv_idx] = pv_outputs[:, 0]
 
             # Slack
-            slack_idx = data["slack", "slack_link", "bus"].edge_index[1]
+            slack_idx = self.get_slack_idx(data)
             slack_outputs = output["slack"]
             Pnet[slack_idx] = slack_outputs[:, 0]
             Qnet[slack_idx] = slack_outputs[:, 1]
@@ -603,7 +618,7 @@ class constraint_violations_loss_pf:
 
         # Generator flows (already aggregated per bus)
         bus_gen = data["bus"].bus_gen.to(device)
-        slack_idx = data["slack", "slack_link", "bus"].edge_index[1]
+        slack_idx = PowerBalanceLoss.get_slack_idx(data)
         pv_idx = data["PV", "PV_link", "bus"].edge_index[1]
         slack_pg = slack_pred[:, 0] + slack_demand[:, 0]
         slack_qg = slack_pred[:, 1] + slack_demand[:, 1]
