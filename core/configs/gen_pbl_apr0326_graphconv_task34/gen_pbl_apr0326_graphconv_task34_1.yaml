@@ -17,14 +17,7 @@ dataset:
     split: val
     task: 3.4
     transform: pfnet_data_mean0_var1
-  - add_bus_type: false
-    case_name: case57_118_500
-    model: PFNet
-    name: pfdeltaPFNet
-    root_dir: /mnt/home/donti-group-shared/pfdelta_data
-    split: val
-    task: 3.4
-    transform: pfnet_data_mean0_var1
+
   - add_bus_type: false
     case_name: case14
     model: PFNet

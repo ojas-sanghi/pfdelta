@@ -31,16 +31,6 @@ dataset:
     transform: pfnet_data_mean0_var1
   
   - add_bus_type: false
-    case_name: _connected_list(casename -- case30_57_118, case57_118_500, case14_30_118, case30_57_500 | case30_57_118, case57_118_500, case14_30_118, case30_57_500)
-    model: PFNet
-    name: pfdeltaPFNet
-    root_dir: /mnt/home/donti-group-shared/pfdelta_data
-    split: val
-    task: 3.4
-    transform: pfnet_data_mean0_var1
-
-
-  - add_bus_type: false
     case_name: case14
     normalized_case_name: _connected_list(casename -- case30_57_118, case57_118_500, case14_30_118, case30_57_500 | case30_57_118, case57_118_500, case14_30_118, case30_57_500)
     model: PFNet
