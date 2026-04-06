@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NOTEBOOK_PATH="${1:-notebooks/ojas_feb0126_test_case_viz_interactive.ipynb}"
+NOTEBOOK_PATH="${1:-notebooks/gen_apr0326_test_case_viz.ipynb}"
+SITE_DIR="${2:-notebooks/interactive_exports/gen_apr0326}"
 
 if [ ! -f "$NOTEBOOK_PATH" ]; then
   echo "Notebook not found: $NOTEBOOK_PATH" >&2
@@ -22,8 +23,6 @@ export JUPYTER_DATA_DIR="${JUPYTER_DATA_DIR:-$PWD/.jupyter_data}"
 export JUPYTER_RUNTIME_DIR="${JUPYTER_RUNTIME_DIR:-$PWD/.jupyter_runtime}"
 mkdir -p "$JUPYTER_CONFIG_DIR" "$JUPYTER_DATA_DIR" "$JUPYTER_RUNTIME_DIR"
 
-"$JUPYTER_BIN" nbconvert --to notebook --execute --inplace \
-  --ExecutePreprocessor.timeout=3600 \
-  "$NOTEBOOK_PATH"
+"$JUPYTER_BIN" nbconvert --to notebook --execute --inplace   --ExecutePreprocessor.timeout=3600   "$NOTEBOOK_PATH"
 
-bash scripts/interactive_exports/prepare_interactive_exports.sh
+bash scripts/interactive_exports/prepare_interactive_exports.sh "$SITE_DIR"
