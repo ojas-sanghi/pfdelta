@@ -30,6 +30,7 @@ except ModuleNotFoundError as exc:
 PBL_METRIC = "PBL Mean"
 DEFAULT_EXPECTED_SEEDS = (42, 43, 44)
 LOSS_FAMILY_SORT_PRIORITY = {"pbl": 0, "mse": 1}
+LOG_SCALE_EPSILON = 1e-12
 SEED_RE = re.compile(r"seed=(?P<seed>\d+)")
 TASK_RE = re.compile(r"^task(?P<num>\d+)$")
 CASE_NUMBER_RE = re.compile(r"\d+")
@@ -380,6 +381,43 @@ def build_metric_matrices(
     }
 
 
+def compute_suite_y_axis_presets(
+    suite_data: dict[str, Any],
+    epsilon: float = LOG_SCALE_EPSILON,
+) -> dict[str, float | list[float]]:
+    """Compute one suite-global log-scale preset for exported uniform mode.
+
+    The exported HTML's ``Uniform y-scale`` option should make comparison easy
+    across every tab *and* every visibility state. We therefore gather the real
+    plotted values for both PBL and MSE across every complete combo that will be
+    exported, fold in the ``mean +/- std`` error-bar extent, and build one
+    shared log-scale range from those values.
+    """
+    combo_order = suite_data.get("combo_order", [])
+    if not combo_order:
+        raise ValueError("Suite data does not contain any complete combos.")
+
+    lower_bound: float | None = None
+    upper_bound: float | None = None
+
+    for combo_key in combo_order:
+        combo = suite_data["combos"][combo_key]
+        for metric_key in (combo["pbl_metric_key"], combo["mse_metric_key"]):
+            metric_data = build_metric_matrices(combo, metric_key)
+            lower = np.clip(metric_data["means"] - metric_data["stds"], epsilon, None)
+            upper = metric_data["means"] + metric_data["stds"]
+
+            combo_lower = float(np.min(lower))
+            combo_upper = float(np.max(upper))
+            lower_bound = combo_lower if lower_bound is None else min(lower_bound, combo_lower)
+            upper_bound = combo_upper if upper_bound is None else max(upper_bound, combo_upper)
+
+    if lower_bound is None or upper_bound is None:
+        raise ValueError("Could not compute a suite-global y-axis preset.")
+
+    return _build_y_axis_preset(lower_bound, upper_bound, epsilon)
+
+
 def plot_grouped_bar_chart(
     means: np.ndarray,
     stds: np.ndarray,
@@ -624,6 +662,7 @@ def write_tabbed_interactive_export(
     tab_specs: list[dict[str, Any]],
     output_html: str | Path,
     page_title: str,
+    y_axis_preset: dict[str, float | list[float]] | None = None,
 ) -> str:
     """Write one self-contained tabbed HTML page for the interactive figures."""
     if not tab_specs:
@@ -638,6 +677,21 @@ def write_tabbed_interactive_export(
     plotly_js = get_plotlyjs()
     button_html_parts = []
     panel_html_parts = []
+
+    global_scale_controls_html = ""
+    if y_axis_preset:
+        preset_json = html.escape(json.dumps(y_axis_preset, separators=(",", ":")), quote=True)
+        global_scale_controls_html = (
+            f'<div class="page-control-row">'
+            f'<div id="global-scale-controls" class="scale-mode-controls" '
+            f'data-y-preset="{preset_json}" '
+            f'data-active-scale-mode="auto">'
+            f'<span class="control-label">Y scale</span>'
+            f'<button type="button" class="scale-mode-button is-active" data-scale-mode="auto">Auto y-scale</button>'
+            f'<button type="button" class="scale-mode-button" data-scale-mode="uniform">Uniform y-scale</button>'
+            f'</div>'
+            f'</div>'
+        )
 
     for index, spec in enumerate(tab_specs):
         label = str(spec["label"])
@@ -711,6 +765,13 @@ def write_tabbed_interactive_export(
       color: var(--muted);
       max-width: 70rem;
     }}
+    .page-control-row {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin: 0 0 1rem 0;
+    }}
     .tab-row {{
       display: flex;
       flex-wrap: wrap;
@@ -756,6 +817,31 @@ def write_tabbed_interactive_export(
       padding-left: 1.2rem;
       color: var(--muted);
     }}
+    .scale-mode-controls {{
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }}
+    .control-label {{
+      font-weight: 700;
+      color: var(--muted);
+      margin-right: 0.1rem;
+    }}
+    .scale-mode-button {{
+      border: 1px solid var(--line);
+      background: #f8f4ec;
+      color: var(--fg);
+      border-radius: 999px;
+      padding: 0.45rem 0.85rem;
+      font: inherit;
+      cursor: pointer;
+    }}
+    .scale-mode-button.is-active {{
+      background: #335f59;
+      color: #ffffff;
+      border-color: #335f59;
+    }}
   </style>
   <script>{plotly_js}</script>
 </head>
@@ -763,24 +849,89 @@ def write_tabbed_interactive_export(
   <main>
     <h1>{html.escape(page_title)}</h1>
     <p class="lede">Each tab below corresponds to one discovered model and training loss family from the April suite. The chart inside each tab is the combined interactive train-vs-test plot with built-in PBL/MSE/Both toggles.</p>
+    {global_scale_controls_html}
     <div class="tab-row">{''.join(button_html_parts)}</div>
     <div class="tab-panels">{''.join(panel_html_parts)}</div>
   </main>
   <script>
     const buttons = Array.from(document.querySelectorAll('.tab-button'));
     const panels = Array.from(document.querySelectorAll('.tab-panel'));
+    const globalScaleControl = document.getElementById('global-scale-controls');
+
+    function getAllPlots() {{
+      return Array.from(document.querySelectorAll('.plotly-graph-div'));
+    }}
+
+    function getActivePanel() {{
+      return document.querySelector('.tab-panel.is-active');
+    }}
+
+    function getPlotsInPanel(panel) {{
+      if (!panel) {{
+        return [];
+      }}
+      return Array.from(panel.querySelectorAll('.plotly-graph-div'));
+    }}
+
+    function toPlotlyLogRange(preset) {{
+      if (Array.isArray(preset.plotly_log_range) && preset.plotly_log_range.length === 2) {{
+        return preset.plotly_log_range;
+      }}
+      const lower = Math.max(Number(preset.lower), Number(preset.epsilon || 1e-12));
+      const upper = Math.max(Number(preset.upper), lower);
+      return [Math.log10(lower), Math.log10(upper)];
+    }}
+
+    function getActiveScaleMode() {{
+      return globalScaleControl ? (globalScaleControl.dataset.activeScaleMode || 'auto') : 'auto';
+    }}
+
+    function setActiveScaleMode(activeMode) {{
+      if (!globalScaleControl) {{
+        return;
+      }}
+      globalScaleControl.dataset.activeScaleMode = activeMode;
+      globalScaleControl.querySelectorAll('.scale-mode-button').forEach((button) => {{
+        button.classList.toggle('is-active', button.dataset.scaleMode === activeMode);
+      }});
+    }}
+
+    function applyScaleModeToPlot(plot) {{
+      if (!window.Plotly || !plot) {{
+        return;
+      }}
+      if (getActiveScaleMode() === 'uniform') {{
+        const preset = globalScaleControl ? globalScaleControl._yPreset : null;
+        if (!preset) {{
+          return;
+        }}
+        window.Plotly.relayout(plot, {{
+          'yaxis.autorange': false,
+          'yaxis.range': toPlotlyLogRange(preset),
+        }});
+        return;
+      }}
+      window.Plotly.relayout(plot, {{
+        'yaxis.autorange': true,
+      }});
+    }}
+
+    function applyScaleModeToAllPlots() {{
+      getAllPlots().forEach((plot) => {{
+        applyScaleModeToPlot(plot);
+      }});
+    }}
+
     function resizePlots(panelId) {{
       if (!window.Plotly) {{
         return;
       }}
       const panel = document.getElementById(panelId);
-      if (!panel) {{
-        return;
-      }}
-      panel.querySelectorAll('.plotly-graph-div').forEach((plot) => {{
+      getPlotsInPanel(panel).forEach((plot) => {{
         window.Plotly.Plots.resize(plot);
       }});
     }}
+
     function activateTab(targetId) {{
       buttons.forEach((button) => {{
         button.classList.toggle('is-active', button.dataset.tabTarget === targetId);
@@ -788,14 +939,52 @@ def write_tabbed_interactive_export(
       panels.forEach((panel) => {{
         panel.classList.toggle('is-active', panel.id === targetId);
       }});
-      window.requestAnimationFrame(() => resizePlots(targetId));
+      window.requestAnimationFrame(() => {{
+        resizePlots(targetId);
+        applyScaleModeToAllPlots();
+      }});
     }}
+
     buttons.forEach((button) => {{
       button.addEventListener('click', () => activateTab(button.dataset.tabTarget));
     }});
-    const initiallyActivePanel = document.querySelector('.tab-panel.is-active');
+
+    if (globalScaleControl) {{
+      globalScaleControl._yPreset = JSON.parse(globalScaleControl.dataset.yPreset || '{{}}');
+      globalScaleControl.querySelectorAll('.scale-mode-button').forEach((button) => {{
+        button.addEventListener('click', () => {{
+          setActiveScaleMode(button.dataset.scaleMode);
+          window.requestAnimationFrame(() => {{
+            const activePanel = getActivePanel();
+            if (activePanel) {{
+              resizePlots(activePanel.id);
+            }}
+            applyScaleModeToAllPlots();
+          }});
+        }});
+      }});
+    }}
+
+    getAllPlots().forEach((plot) => {{
+      if (!plot || !plot.on) {{
+        return;
+      }}
+      const refreshGlobalScale = () => {{
+        if (getActiveScaleMode() !== 'uniform') {{
+          return;
+        }}
+        window.requestAnimationFrame(() => applyScaleModeToAllPlots());
+      }};
+      plot.on('plotly_buttonclicked', refreshGlobalScale);
+      plot.on('plotly_restyle', refreshGlobalScale);
+    }});
+
+    const initiallyActivePanel = getActivePanel();
     if (initiallyActivePanel) {{
-      window.requestAnimationFrame(() => resizePlots(initiallyActivePanel.id));
+      window.requestAnimationFrame(() => {{
+        resizePlots(initiallyActivePanel.id);
+        applyScaleModeToAllPlots();
+      }});
     }}
   </script>
 </body>
@@ -806,6 +995,7 @@ def write_tabbed_interactive_export(
 
 
 def write_interactive_exports(
+
     figures: dict[str, Any],
     export_dir: str | Path,
     page_title: str,
@@ -1272,6 +1462,35 @@ def _to_rgba_string(
     return f"rgba({int(red * 255)}, {int(green * 255)}, {int(blue * 255)}, {actual_alpha:.3f})"
 
 
+def _update_family_bounds(
+    family_bounds: dict[str, dict[str, float]],
+    family_name: str,
+    lower: float,
+    upper: float,
+) -> None:
+    current = family_bounds.get(family_name)
+    if current is None:
+        family_bounds[family_name] = {"lower": lower, "upper": upper}
+        return
+    current["lower"] = min(current["lower"], lower)
+    current["upper"] = max(current["upper"], upper)
+
+
+def _build_y_axis_preset(
+    lower: float,
+    upper: float,
+    epsilon: float,
+) -> dict[str, float | list[float]]:
+    clamped_lower = max(float(lower), float(epsilon))
+    clamped_upper = max(float(upper), clamped_lower)
+    return {
+        "lower": clamped_lower,
+        "upper": clamped_upper,
+        "epsilon": float(epsilon),
+        "plotly_log_range": [math.log10(clamped_lower), math.log10(clamped_upper)],
+    }
+
+
 def _build_index_html(page_title: str, index_items: list[tuple[str, str]]) -> str:
     items_html = "\n".join(
         f'    <li><a href="{filename}">{label}</a></li>' for label, filename in index_items
@@ -1304,6 +1523,7 @@ __all__ = [
     "DEFAULT_EXPECTED_SEEDS",
     "PBL_METRIC",
     "build_metric_matrices",
+    "compute_suite_y_axis_presets",
     "load_run_family",
     "load_run_suite",
     "plot_grouped_bar_chart",

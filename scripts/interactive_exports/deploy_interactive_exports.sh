@@ -4,17 +4,27 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  bash scripts/interactive_exports/deploy_interactive_exports.sh [site_dir] [--generate] [--prod]
+  bash scripts/interactive_exports/deploy_interactive_exports.sh [site_dir] [--generate] [--prod] [--preview]
 
-Deploys the interactive HTML export to Vercel.
+Deploys the interactive HTML export to Vercel via the REST API.
+
+Environment:
+  VERCEL_TOKEN              Required API token
+  VERCEL_PROJECT_ID         Optional project id override
+  VERCEL_PROJECT_NAME       Optional project name override
+  VERCEL_PROJECT_ID_OR_NAME Optional project id or name override
+  VERCEL_TEAM_ID            Optional team id
+  VERCEL_TEAM_SLUG          Optional team slug
 
 Options:
   --generate    Execute the notebook before deploy
-  --prod        Use production deploy (only when vercel CLI/npx is available)
+  --prod        Deploy to the project's production target (default)
+  --preview     Deploy to a preview target instead of production
 
 Examples:
   bash scripts/interactive_exports/deploy_interactive_exports.sh
-  bash scripts/interactive_exports/deploy_interactive_exports.sh notebooks/interactive_exports/gen_apr0326 --generate
+  bash scripts/interactive_exports/deploy_interactive_exports.sh --generate --prod
+  bash scripts/interactive_exports/deploy_interactive_exports.sh notebooks/interactive_exports/gen_apr0326 --preview
 USAGE
 }
 
@@ -30,7 +40,7 @@ if [ "$#" -gt 0 ] && [[ "$1" != --* ]]; then
 fi
 
 DO_GENERATE=false
-DO_PROD=false
+TARGET="production"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -38,7 +48,10 @@ while [ "$#" -gt 0 ]; do
       DO_GENERATE=true
       ;;
     --prod)
-      DO_PROD=true
+      TARGET="production"
+      ;;
+    --preview)
+      TARGET="preview"
       ;;
     -h|--help)
       usage
@@ -59,29 +72,19 @@ fi
 
 bash scripts/interactive_exports/prepare_interactive_exports.sh "$SITE_DIR"
 
-echo "Deploying to Vercel..."
-
-if command -v vercel >/dev/null 2>&1; then
-  if [ "$DO_PROD" = true ]; then
-    vercel deploy "$SITE_DIR" --prod -y
-  else
-    vercel deploy "$SITE_DIR" -y
-  fi
-  exit 0
+if [ -x ".venv/bin/python" ]; then
+  PYTHON_BIN=".venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+else
+  echo "python3 not found. A Python interpreter is required for Vercel REST API deploys." >&2
+  exit 1
 fi
 
-if command -v npx >/dev/null 2>&1; then
-  if [ "$DO_PROD" = true ]; then
-    npx vercel deploy "$SITE_DIR" --prod -y
-  else
-    npx vercel deploy "$SITE_DIR" -y
-  fi
-  exit 0
+if [ -z "${VERCEL_TOKEN:-}" ]; then
+  echo "VERCEL_TOKEN is required for REST API deploys." >&2
+  exit 1
 fi
 
-if [ "$DO_PROD" = true ]; then
-  echo "--prod requested but local vercel CLI is unavailable; using claimable preview deploy fallback." >&2
-fi
-
-echo "Local vercel CLI not found. Falling back to claimable deploy script."
-scripts/interactive_exports/deploy_vercel_claim.sh "$SITE_DIR"
+echo "Deploying to Vercel via REST API (${TARGET})..."
+"$PYTHON_BIN" scripts/interactive_exports/deploy_interactive_exports_api.py "$SITE_DIR" --target "$TARGET"
