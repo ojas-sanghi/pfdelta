@@ -1,0 +1,151 @@
+config_type: simple_batch
+job_parameters:
+  p: mit_normal_gpu,mit_preemptable
+  exclude: node1928,node4007
+  requeue: __novalue__
+  body: "source ~/.bashrc\nuv run __launch__"
+  mem: 64G
+  G: 1
+  output: graphconv_pbl_%j.out
+  signal: USR1@90
+  time: "05:59:00"
+batch_name: gen_pbl_apr0826_graphconv_task32
+dataset:
+  datasets:
+  - add_bus_type: false
+    case_name: case14_30_57
+    model: PFNet
+    name: pfdeltaPFNet
+    root_dir: /orcd/pool/005/donti_shared/pfdelta_data
+    split: train
+    task: 3.2
+    transform: pfnet_data_mean0_var1
+
+  - add_bus_type: false
+    case_name: case14_30_57
+    model: PFNet
+    name: pfdeltaPFNet
+    root_dir: /orcd/pool/005/donti_shared/pfdelta_data
+    split: val
+    task: 3.2
+    transform: pfnet_data_mean0_var1
+
+
+
+  - add_bus_type: false
+    case_name: case14
+    normalized_case_name: case14_30_57
+    model: PFNet
+    name: pfdeltaPFNet
+    root_dir: /orcd/pool/005/donti_shared/pfdelta_data
+    split: val
+    task: 1.3
+    transform: pfnet_data_mean0_var1
+
+  - add_bus_type: false
+    case_name: case30
+    normalized_case_name: case14_30_57
+    model: PFNet
+    name: pfdeltaPFNet
+    root_dir: /orcd/pool/005/donti_shared/pfdelta_data
+    split: val
+    task: 1.3
+    transform: pfnet_data_mean0_var1
+
+  - add_bus_type: false
+    case_name: case57
+    normalized_case_name: case14_30_57
+    model: PFNet
+    name: pfdeltaPFNet
+    root_dir: /orcd/pool/005/donti_shared/pfdelta_data
+    split: val
+    task: 1.3
+    transform: pfnet_data_mean0_var1
+
+  - add_bus_type: false
+    case_name: case118
+    normalized_case_name: case14_30_57
+    model: PFNet
+    name: pfdeltaPFNet
+    root_dir: /orcd/pool/005/donti_shared/pfdelta_data
+    split: val
+    task: 1.3
+    transform: pfnet_data_mean0_var1
+
+  - add_bus_type: false
+    case_name: case500
+    normalized_case_name: case14_30_57
+    model: PFNet
+    name: pfdeltaPFNet
+    root_dir: /orcd/pool/005/donti_shared/pfdelta_data
+    split: val
+    task: 1.3
+    transform: pfnet_data_mean0_var1
+  
+functional:
+  config: graph_conv
+  cpu: false
+  checkpoint: True
+  is_debug: false
+  run_location: gen_apr0826/pbl/task32/graphconv
+  run_name: seed=%seed_lr=%lr_hidden=%hidden_dim_layers=%n_layers
+  seed: _manual_list(42, 43, 44)
+  trainer_name: gnn_trainer
+model:
+  hidden_dim: _manual_list(256)
+  in_dim: 6
+  out_dim: 6
+  n_layers: _manual_list(10)
+  name: graph_conv
+optim:
+  optimizer:
+    lr: _manual_list(0.0001 | 1e-4)
+    name: Adam
+    weight_decay: 0.0
+  train_params:
+    batch_size: 64
+    epochs: 100
+    train_loss:
+    - model: PFNet
+      name: universal_power_balance
+    - name: GNNTorchLoss
+      output_name: bus__y
+      torch_nn_name: MSELoss
+    - name: pfn_masked_mse
+      regularize: false
+    - name: pfn_masked_mse
+      regularize: true
+    - keyword: pbl_pf
+      loss_name: PBL Max
+      name: recycle_loss
+      recycled_parameter: power_balance_max
+    - keyword: pbl_pf
+      loss_name: PBL L2
+      name: recycle_loss
+      recycled_parameter: power_balance_l2
+
+  val_params:
+    batch_size: 64
+    early_stop:
+      decrease_by: 0.01
+      decrease_for: 10
+      needs_best_every: 15
+    report_every: 2
+    val_loss:
+    - model: PFNet
+      name: universal_power_balance
+    - name: GNNTorchLoss
+      output_name: bus__y
+      torch_nn_name: MSELoss
+    - name: pfn_masked_mse
+      regularize: false
+    - name: pfn_masked_mse
+      regularize: true
+    - keyword: pbl_pf
+      loss_name: PBL Max
+      name: recycle_loss
+      recycled_parameter: power_balance_max
+    - keyword: pbl_pf
+      loss_name: PBL L2
+      name: recycle_loss
+      recycled_parameter: power_balance_l2
