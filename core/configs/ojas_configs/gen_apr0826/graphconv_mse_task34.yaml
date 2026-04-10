@@ -103,7 +103,7 @@ optim:
     weight_decay: 0.0
   train_params:
     batch_size: 64
-    epochs: 100
+    epochs: 150
     train_loss:
     - name: GNNTorchLoss
       output_name: bus__y
