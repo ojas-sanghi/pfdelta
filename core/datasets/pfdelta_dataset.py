@@ -14,9 +14,8 @@ from core.datasets.data_stats import pfnet_pfdata_stats
 # from core.datasets.data_stats import canos_pfdelta_stats
 
 from core.datasets.dataset_utils import (
-    canos_pf_data_mean0_var1,
-    canos_pf_slack_mean0_var1,
-    pfnet_data_mean0_var1,
+    branch_perturbation_transform,
+    resolve_dataset_transform,
 )
 from core.utils.registry import registry
 
@@ -104,7 +103,12 @@ class PFDeltaDataset(InMemoryDataset):
 
         self.perturbation = perturbation
         self.feasibility_type = feasibility_type
-        self.n_samples = n_samples            
+        self.n_samples = n_samples
+
+        transform = resolve_dataset_transform(
+            transform,
+            {"branch_perturbation": branch_perturbation_transform},
+        )
 
         if task in [3.2, 3.3, 3.4]:
             self._custom_processed_dir = os.path.join(

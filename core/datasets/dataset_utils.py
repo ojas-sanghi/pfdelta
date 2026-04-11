@@ -1,6 +1,8 @@
-import numpy as np
-import os
 import json
+import os
+
+import numpy as np
+import torch
 
 
 FEASIBILITY_CONFIG = {
@@ -40,6 +42,114 @@ TASK_CONFIG = {
 def mean0_var1(x, mean, std):
     x = (x - mean) / std
     return x
+
+
+class ComposeTransforms:
+    """Apply a sequence of dataset transforms from left to right."""
+
+    def __init__(self, transforms):
+        self.transforms = [transform for transform in transforms if transform is not None]
+
+    def __call__(self, data):
+        for transform in self.transforms:
+            data = transform(data)
+        return data
+
+
+def resolve_dataset_transform(transform, named_transform_factories):
+    """Resolve YAML-friendly transform specs into a callable."""
+    if transform is None or callable(transform):
+        return transform
+
+    if isinstance(transform, (list, tuple)):
+        resolved = [
+            resolve_dataset_transform(one_transform, named_transform_factories)
+            for one_transform in transform
+        ]
+        resolved = [one_transform for one_transform in resolved if one_transform is not None]
+        if len(resolved) == 0:
+            return None
+        if len(resolved) == 1:
+            return resolved[0]
+        return ComposeTransforms(resolved)
+
+    if isinstance(transform, str):
+        transform = {"name": transform}
+
+    if isinstance(transform, dict):
+        transform = dict(transform)
+        transform_name = transform.pop("name", None)
+        assert transform_name is not None, (
+            "Transform dictionaries need a 'name' key."
+        )
+        transform_factory = named_transform_factories.get(transform_name)
+        assert transform_factory is not None, (
+            f"Transform {transform_name} is not registered for this dataset."
+        )
+        return transform_factory(**transform)
+
+    raise TypeError(
+        "Transform needs to be None, callable, string, dict, or an ordered list."
+    )
+
+
+def _positive_noise_scale(num_edges, sigma, reference):
+    """Log-normal scale keeps multiplicative perturbations positive."""
+    noise = torch.randn((num_edges, 1), device=reference.device, dtype=reference.dtype)
+    return torch.exp(sigma * noise)
+
+
+def branch_perturbation_transform(sigma):
+    """
+    Randomly perturb branch input attributes without touching labels.
+
+    This is intended as an input transform, not as a physically re-solved sample.
+    It therefore pairs naturally with power-balance training, while supervised
+    targets become stale once the branch values are changed.
+    """
+    sigma = float(sigma)
+    assert sigma >= 0.0, "branch_perturbation sigma must be non-negative."
+
+    def transform(data):
+        if sigma == 0.0:
+            return data
+
+        edge_type = ("bus", "branch", "bus")
+        if edge_type not in data.edge_types:
+            return data
+
+        edge_attr = getattr(data[edge_type], "edge_attr", None)
+        if edge_attr is None or edge_attr.numel() == 0:
+            return data
+
+        # __getitem__ returns a shallow copy of the graph object. Replacing the
+        # tensor avoids contaminating the cached backing sample across epochs.
+        edge_attr = edge_attr.clone()
+        num_edges, num_features = edge_attr.shape
+
+        series_scale = _positive_noise_scale(num_edges, sigma, edge_attr)
+        shunt_scale = _positive_noise_scale(num_edges, sigma, edge_attr)
+
+        if num_features == 8:
+            # Raw PFDelta branch layout:
+            # [br_r, br_x, g_fr, b_fr, g_to, b_to, tap, shift]
+            edge_attr[:, 0:2] = edge_attr[:, 0:2] * series_scale
+            edge_attr[:, 2:6] = edge_attr[:, 2:6] * shunt_scale
+        elif num_features == 5:
+            # PFNet branch layout:
+            # [r, x, b_total, tau, angle]
+            edge_attr[:, 0:2] = edge_attr[:, 0:2] * series_scale
+            edge_attr[:, 2:3] = edge_attr[:, 2:3] * shunt_scale
+        else:
+            raise ValueError(
+                "branch_perturbation only supports 8-column raw PFDelta edges "
+                "or 5-column PFNet edges."
+            )
+
+        data[edge_type].edge_attr = edge_attr
+        return data
+
+    return transform
 
 
 def create_train_test_mapping_json(

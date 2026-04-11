@@ -4,14 +4,17 @@ from typing import Any, Dict
 
 import torch
 
-from core.utils.registry import registry
 from core.datasets.data_stats import pfnet_pfdata_stats
-from core.datasets.pfdelta_dataset import PFDeltaDataset
+from core.datasets.data_stats_more import canos_pfdelta_stats
 from core.datasets.dataset_utils import (
+    branch_perturbation_transform,
     canos_pf_data_mean0_var1,
     canos_pf_slack_mean0_var1,
     pfnet_data_mean0_var1,
+    resolve_dataset_transform,
 )
+from core.datasets.pfdelta_dataset import PFDeltaDataset
+from core.utils.registry import registry
 
 
 #############################################################################
@@ -217,6 +220,10 @@ class PFDeltaCANOS(PFDeltaDataset):
       based on the provided case name.
     - The resulting `HeteroData` graph only includes the node types
       relevant to CANOS: bus, PV, PQ, and slack.
+    - Transform resolution now goes through a shared helper so configs can pass
+      either a single transform or an ordered transform list. This keeps the
+      config surface area small while still allowing branch perturbation to be
+      composed with the existing CANOS normalization.
     """
 
     def __init__(
@@ -232,15 +239,51 @@ class PFDeltaCANOS(PFDeltaDataset):
         pre_filter=None,
         force_reload=False,
     ):
-        if pre_transform is not None:
-            if pre_transform == "canos_pf_data_mean0_var1":
-                stats = canos_pfdelta_stats[case_name]
-                pre_transform = partial(canos_pf_data_mean0_var1, stats)
+        # The new transform flow is centralized through
+        # resolve_dataset_transform. That helper accepts:
+        #   - a single legacy string such as "canos_pf_slack_mean0_var1"
+        #   - a dict such as {"name": "branch_perturbation", "sigma": 0.05}
+        #   - or an ordered list mixing both forms
+        #
+        # We give the resolver a small registry of CANOS-specific transform
+        # factories here so this class can keep its dataset-specific behavior
+        # while still sharing the generic parsing/composition logic.
+        pre_transform = resolve_dataset_transform(
+            pre_transform,
+            {
+                "canos_pf_data_mean0_var1": (
+                    lambda **_: partial(canos_pf_data_mean0_var1, canos_pfdelta_stats[case_name])
+                )
+            },
+        )
+        transform = resolve_dataset_transform(
+            transform,
+            {
+                "branch_perturbation": branch_perturbation_transform,
+                "canos_pf_slack_mean0_var1": (
+                    lambda **_: partial(canos_pf_slack_mean0_var1, canos_pfdelta_stats[case_name])
+                ),
+            },
+        )
 
-        if transform is not None:
-            if transform == "canos_pf_slack_mean0_var1":
-                stats = canos_pfdelta_stats[case_name]
-                transform = partial(canos_pf_slack_mean0_var1, stats)
+        # Why use lambda here?
+        # resolve_dataset_transform expects a mapping from transform name to a
+        # callable "factory". The factory is called with any extra keys from the
+        # YAML spec and must return the actual transform function.
+        #
+        # For branch_perturbation, the factory already exists:
+        #   {"name": "branch_perturbation", "sigma": 0.05}
+        # so the resolver simply calls:
+        #   branch_perturbation_transform(sigma=0.05)
+        #
+        # For the normalization transforms there are no user-provided runtime
+        # arguments in the YAML; instead, they need this dataset's case-specific
+        # statistics. The lambda is a tiny adapter that matches the same factory
+        # interface expected by the resolver, ignores any unused keyword inputs,
+        # and returns a partial with the correct stats already baked in.
+        #
+        # After the lambda runs, the resolver sees the same kind of thing in both
+        # cases: a callable that can be applied directly to one HeteroData sample.
 
         super().__init__(
             root_dir=root_dir,
@@ -347,6 +390,9 @@ class PFDeltaPFNet(PFDeltaDataset):
     - Edge attributes are reformatted to contain resistance, reactance,
       total susceptance, transformer tap ratio, and phase shift angle
       for each branch.
+    - Transform resolution now supports ordered composition, which is important
+      for PFNet because branch perturbation should usually happen before
+      `pfnet_data_mean0_var1` normalizes the PFNet edge features.
     """
 
     def __init__(
@@ -368,18 +414,51 @@ class PFDeltaPFNet(PFDeltaDataset):
         if self.normalized_case_name is None:
             self.normalized_case_name = case_name
 
-        if pre_transform:
-            if pre_transform == "pfnet_data_mean0_var1":
-                stats = pfnet_pfdata_stats[case_name]
-                pre_transform = partial(pfnet_data_mean0_var1, stats)
+        # PFNet already had one piece of dataset-specific transform logic:
+        # for some task splits we normalize using stats from a different
+        # "reference" case name. We keep that behavior, but package it through
+        # the shared transform resolver so PFNet normalization can now be
+        # composed with branch perturbation in the config.
+        transform_case_name = (
+            self.normalized_case_name if task in [3.1, 3.2, 3.3] else case_name
+        )
+        # pre_transform uses the same resolver pattern, but still runs during
+        # preprocessing rather than on each sample fetch. The value here remains
+        # backward compatible with the old single-string form.
+        pre_transform = resolve_dataset_transform(
+            pre_transform,
+            {
+                "pfnet_data_mean0_var1": (
+                    lambda **_: partial(pfnet_data_mean0_var1, pfnet_pfdata_stats[case_name])
+                )
+            },
+        )
 
-        if transform is not None:
-            if transform == "pfnet_data_mean0_var1":
-                if task in [3.1, 3.2, 3.3]:
-                    stats = pfnet_pfdata_stats[self.normalized_case_name]
-                else:
-                    stats = pfnet_pfdata_stats[case_name]
-                transform = partial(pfnet_data_mean0_var1, stats)
+        # transform runs at sample access time, so this is where we now support
+        # config patterns such as:
+        #   transform:
+        #     - {name: branch_perturbation, sigma: 0.05}
+        #     - pfnet_data_mean0_var1
+        #
+        # The resolver applies list entries left-to-right. That means the order
+        # in the YAML is the order in which the sample is transformed.
+        transform = resolve_dataset_transform(
+            transform,
+            {
+                "branch_perturbation": branch_perturbation_transform,
+                "pfnet_data_mean0_var1": (
+                    lambda **_: partial(pfnet_data_mean0_var1, pfnet_pfdata_stats[transform_case_name])
+                ),
+            },
+        )
+
+        # The lambda serves as an adapter from "transform name" to "callable
+        # transform builder". resolve_dataset_transform always talks to factories
+        # using keyword arguments from the config. PFNet normalization itself
+        # does not need YAML-provided arguments; it needs case statistics from
+        # this dataset instance. The lambda captures the correct stats and
+        # returns `partial(pfnet_data_mean0_var1, stats)`, which is the actual
+        # one-argument transform that PyG will later apply to each sample.
 
         super().__init__(
             root_dir=root_dir,
