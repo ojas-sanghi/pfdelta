@@ -1,0 +1,136 @@
+# =============================================================================
+# GridFM Training from Scratch on PFDelta
+# =============================================================================
+# Trains the full GPS-Transformer from random initialisation on PFDelta data.
+# Uses the same architecture as GridFM v0.2 but no pre-trained weights.
+#
+# Usage:
+#   python main.py --config examples/gridfm_train_scratch
+#
+# Multi-grid training (recommended for foundation-model behaviour):
+# List multiple datasets under train + val to train on multiple grid sizes.
+# The GridFM paper trained on case30, case24_rts, case57, case89,
+# case118, and case240.  PFDelta has case14, case30, case57, case118,
+# case500, case2000.
+# =============================================================================
+
+config_type: experiment
+
+model:
+  name: gridfm
+
+  # ── GPSTransformer architecture ───────────────────────────────────────────
+  # These match the GridFM v0.2 hyperparameters; feel free to adjust.
+  input_dim:      9
+  hidden_size:    256
+  output_dim:     6
+  edge_dim:       2
+  pe_dim:         20
+  num_layers:     8
+  attention_head: 8
+  dropout:        0.1
+  mask_dim:       6
+  mask_value:     0.0
+  learn_mask:     false
+
+  # ── Data normalisation ────────────────────────────────────────────────────
+  baseMVA_orig:   100.0
+  baseMVA_data:   0.0   # 0 = compute per-batch adaptively
+
+  # ── No pre-trained weights ────────────────────────────────────────────────
+  pretrained_path: ""
+
+  # ── Masking (feature reconstruction task) ─────────────────────────────────
+  apply_pf_mask:  true
+
+dataset:
+  datasets:
+    # ── Training sets (multi-grid) ────────────────────────────────────────
+    # To replicate GridFM's multi-grid pre-training, add multiple case sizes.
+    # Each dataset entry becomes part of the combined training set.
+    - name: pfdeltadata
+      case_name: case30
+      root_dir: /mnt/home/donti-group-shared/pfdelta_data
+      split: train
+      task: 1.1
+      model: GridFM
+
+    - name: pfdeltadata
+      case_name: case57
+      root_dir: /mnt/home/donti-group-shared/pfdelta_data
+      split: train
+      task: 1.1
+      model: GridFM
+
+    - name: pfdeltadata
+      case_name: case118
+      root_dir: /mnt/home/donti-group-shared/pfdelta_data
+      split: train
+      task: 1.1
+      model: GridFM
+
+    # ── Validation sets ───────────────────────────────────────────────────
+    - name: pfdeltadata
+      case_name: case30
+      root_dir: /mnt/home/donti-group-shared/pfdelta_data
+      split: val
+      task: 1.1
+      model: GridFM
+
+    - name: pfdeltadata
+      case_name: case57
+      root_dir: /mnt/home/donti-group-shared/pfdelta_data
+      split: val
+      task: 1.1
+      model: GridFM
+
+    - name: pfdeltadata
+      case_name: case118
+      root_dir: /mnt/home/donti-group-shared/pfdelta_data
+      split: val
+      task: 1.1
+      model: GridFM
+
+functional:
+  trainer_name: gridfm_trainer
+  run_name: gridfm_scratch_multi_grid
+  run_location: gridfm_scratch
+  seed: 0
+  is_debug: false
+  cpu: false
+  freeze_encoder:    false
+  freeze_gps_layers: 0
+
+optim:
+  optimizer:
+    name: Adam
+    lr: 0.0001
+    betas: [0.9, 0.999]
+
+  lr_scheduler:
+    name: ReduceLROnPlateau
+    mode: min
+    factor: 0.7
+    patience: 10
+
+  train_params:
+    epochs: 500
+    batch_size: 64
+    train_loss:
+      # GridFM v0.2 uses 1% MaskedMSE + 99% PBE
+      - name: gridfm_masked_mse
+      # Uncomment to match GridFM's mixed loss exactly:
+      # - name: gridfm_mixed
+      #   w_mse: 0.01
+      #   w_pbe: 0.99
+
+  val_params:
+    batch_size: 64
+    report_every: 10
+    early_stop:
+      decrease_by: 0.001
+      decrease_for: 50
+      needs_best_every: 50
+    val_loss:
+      - name: gridfm_masked_mse
+      - name: gridfm_eval_rmse
