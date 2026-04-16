@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NOTEBOOK_PATH="${1:-notebooks/gen_apr0326_test_case_viz.ipynb}"
-SITE_DIR="${2:-notebooks/interactive_exports/gen_apr0326}"
+NOTEBOOK_PATH="${1:-notebooks/gen_apr0826_test_case_viz.ipynb}"
+SITE_DIR="${2:-notebooks/interactive_exports/gen_apr0826}"
 
 if [ ! -f "$NOTEBOOK_PATH" ]; then
   echo "Notebook not found: $NOTEBOOK_PATH" >&2

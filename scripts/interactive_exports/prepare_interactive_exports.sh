@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SITE_DIR="${1:-notebooks/interactive_exports/gen_apr0326}"
+SITE_DIR="${1:-notebooks/interactive_exports/gen_apr0826}"
 INDEX_FILE="$SITE_DIR/index.html"
 
 if [ ! -d "$SITE_DIR" ]; then

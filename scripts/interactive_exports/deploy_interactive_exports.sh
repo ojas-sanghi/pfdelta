@@ -24,7 +24,7 @@ Options:
 Examples:
   bash scripts/interactive_exports/deploy_interactive_exports.sh
   bash scripts/interactive_exports/deploy_interactive_exports.sh --generate --prod
-  bash scripts/interactive_exports/deploy_interactive_exports.sh notebooks/interactive_exports/gen_apr0326 --preview
+  bash scripts/interactive_exports/deploy_interactive_exports.sh notebooks/interactive_exports/gen_apr0826 --preview
 USAGE
 }
 
@@ -33,7 +33,7 @@ if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
   exit 0
 fi
 
-SITE_DIR="notebooks/interactive_exports/gen_apr0326"
+SITE_DIR="notebooks/interactive_exports/gen_apr0826"
 if [ "$#" -gt 0 ] && [[ "$1" != --* ]]; then
   SITE_DIR="$1"
   shift

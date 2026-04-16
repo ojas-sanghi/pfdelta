@@ -43,9 +43,9 @@ def load_run_suite(
 ) -> dict[str, Any]:
     """Load the April run suite and organize it by ``(model, loss_family)``.
 
-    When ``skip_incomplete_combos`` is ``True``, incomplete or inconsistent
-    combos are recorded in ``skipped_items`` and omitted from the returned suite
-    instead of aborting the entire load.
+    Partial combos are retained. A train-case group contributes records only
+    when all expected seeds are present; incomplete train-case groups are
+    recorded in ``skipped_items`` and later rendered as empty bar slots.
     """
     run_root_path = Path(run_root).resolve()
     if not run_root_path.is_dir():
@@ -72,7 +72,7 @@ def load_run_suite(
 
             for model_dir in model_dirs:
                 try:
-                    selected_records = _select_best_records_for_model_task(
+                    selection_result = _select_best_records_for_model_task(
                         model_dir=model_dir,
                         task=task_dir.name,
                         loss_family=loss_family,
@@ -91,8 +91,23 @@ def load_run_suite(
                     )
                     continue
 
+                selected_records = selection_result["selected_records"]
+                selected_model_slug = selection_result["model_slug"]
+                for skip_info in selection_result["skipped_train_cases"]:
+                    skipped_items.append(
+                        {
+                            "model_slug": selected_model_slug,
+                            "loss_family": loss_family,
+                            "task": task_dir.name,
+                            "train_case": skip_info["train_case"],
+                            "reason": skip_info["reason"],
+                        }
+                    )
+
                 if not selected_records:
-                    raise ValueError(f"No run records were selected under {model_dir}")
+                    if not skip_incomplete_combos:
+                        raise ValueError(f"No complete train-case groups were selected under {model_dir}")
+                    continue
 
                 combo_key = (selected_records[0]["model_slug"], loss_family)
                 combo = combos.setdefault(
@@ -123,6 +138,7 @@ def load_run_suite(
                                 "model_slug": record["model_slug"],
                                 "loss_family": loss_family,
                                 "task": task_dir.name,
+                                "train_case": record["train_case"],
                                 "reason": (
                                     "Inconsistent grouped test-case order across the suite: "
                                     f"expected {suite_test_cases}, found {record_test_cases} at {record['run_path']}"
@@ -174,8 +190,11 @@ def load_run_suite(
                 {record["mse_metric_key"] for record in records},
                 f"MSE metric for combo {combo_key}",
             )
-            signature = _group_signature(records)
-            row_labels = sorted({record["train_case"] for record in records}, key=_case_sort_key)
+            available_signature = _group_signature(records)
+            available_row_labels = sorted(
+                {record["train_case"] for record in records},
+                key=_case_sort_key,
+            )
             col_labels = list(suite_test_cases)
             display_name = f"{combo['model_slug']} - {combo['loss_family']}"
             audit_rows = [
@@ -213,23 +232,36 @@ def load_run_suite(
             "selection_metric_key": selection_metric_key,
             "pbl_metric_key": pbl_metric_key,
             "mse_metric_key": mse_metric_key,
-            "row_labels": row_labels,
+            "row_labels": [],
+            "available_row_labels": available_row_labels,
+            "available_signature": available_signature,
             "col_labels": col_labels,
             "expected_seeds": list(normalized_expected_seeds),
             "audit_rows": audit_rows,
-            "signature": signature,
         }
 
     if not prepared_combos:
         detail = _format_skip_summary(skipped_items)
         raise ValueError(
-            f"No complete model/loss-family combos were discovered under {run_root_path}. {detail}".strip()
+            f"No model/loss-family combos with at least one complete train-case group were discovered under {run_root_path}. {detail}".strip()
         )
 
-    ordered_prepared_keys = sorted(prepared_combos, key=lambda key: (-len(prepared_combos[key]["signature"]), _combo_sort_key(key)))
-    reference_key = ordered_prepared_keys[0]
-    reference_signature = prepared_combos[reference_key]["signature"]
-    reference_combo_label = prepared_combos[reference_key]["display_name"]
+    global_signature = tuple(
+        sorted(
+            {group for combo in prepared_combos.values() for group in combo["available_signature"]},
+            key=lambda group: (_task_sort_key(group[0]), _case_sort_key(group[1])),
+        )
+    )
+    if not global_signature:
+        detail = _format_skip_summary(skipped_items)
+        raise ValueError(
+            f"No complete train-case groups were discovered under {run_root_path}. {detail}".strip()
+        )
+
+    global_row_labels = sorted(
+        {train_case for task, train_case in global_signature},
+        key=_case_sort_key,
+    )
 
     active_combos: dict[tuple[str, str], dict[str, Any]] = {}
     combo_summary_rows = []
@@ -237,25 +269,11 @@ def load_run_suite(
 
     for combo_key in sorted(prepared_combos, key=_combo_sort_key):
         combo = prepared_combos[combo_key]
-        if combo["signature"] != reference_signature:
-            message = (
-                "Incomplete or inconsistent combo layout detected: "
-                f"combo {combo['display_name']} has groups {combo['signature']}, "
-                f"but {reference_combo_label} has {reference_signature}"
-            )
-            if not skip_incomplete_combos:
-                raise ValueError(message)
-            skipped_items.append(
-                {
-                    "model_slug": combo["model_slug"],
-                    "loss_family": combo["loss_family"],
-                    "task": "*",
-                    "reason": message,
-                }
-            )
-            continue
-
-        combo.pop("signature", None)
+        combo["row_labels"] = list(global_row_labels)
+        combo["available_group_count"] = len(combo["available_signature"])
+        combo["available_row_count"] = len(combo["available_row_labels"])
+        combo["total_group_count"] = len(global_signature)
+        combo["total_row_count"] = len(global_row_labels)
         active_combos[combo_key] = combo
         combo_summary_rows.append(
             {
@@ -266,21 +284,13 @@ def load_run_suite(
                 "pbl_metric_key": combo["pbl_metric_key"],
                 "mse_metric_key": combo["mse_metric_key"],
                 "num_records": len(combo["records"]),
-                "num_groups": len(reference_signature),
+                "available_groups": combo["available_group_count"],
+                "total_groups": combo["total_group_count"],
+                "available_train_case_rows": combo["available_row_count"],
+                "total_train_case_rows": combo["total_row_count"],
             }
         )
         all_audit_rows.extend(combo["audit_rows"])
-
-    if not active_combos:
-        detail = _format_skip_summary(skipped_items)
-        raise ValueError(
-            f"No complete model/loss-family combos were discovered under {run_root_path}. {detail}".strip()
-        )
-
-    global_row_labels = sorted(
-        {train_case for task, train_case in reference_signature},
-        key=_case_sort_key,
-    )
 
     return {
         "run_root": str(run_root_path),
@@ -316,7 +326,12 @@ def build_metric_matrices(
     combo_data: dict[str, Any] | list[dict[str, Any]],
     metric_key: str,
 ) -> dict[str, Any]:
-    """Aggregate seed-level records into mean/std matrices for one metric."""
+    """Aggregate seed-level records into mean/std matrices for one metric.
+
+    Cells backed by no complete 3-seed train-case group are filled with NaN so
+    the grouped plots preserve their bar slots while rendering those entries as
+    visually empty.
+    """
     if isinstance(combo_data, dict):
         records = combo_data["records"]
         row_labels = combo_data["row_labels"]
@@ -354,13 +369,15 @@ def build_metric_matrices(
                 )
             grouped[train_case][test_case].append(float(case_metrics[metric_key]))
 
-    means = np.empty((len(row_labels), len(col_labels)), dtype=float)
-    stds = np.empty((len(row_labels), len(col_labels)), dtype=float)
-    seed_counts = np.empty((len(row_labels), len(col_labels)), dtype=int)
+    means = np.full((len(row_labels), len(col_labels)), np.nan, dtype=float)
+    stds = np.full((len(row_labels), len(col_labels)), np.nan, dtype=float)
+    seed_counts = np.zeros((len(row_labels), len(col_labels)), dtype=int)
 
     for row_index, train_case in enumerate(row_labels):
         for col_index, test_case in enumerate(col_labels):
             values = grouped[train_case][test_case]
+            if len(values) == 0:
+                continue
             if len(values) != len(expected_seeds):
                 raise ValueError(
                     f"Expected exactly {len(expected_seeds)} values for {train_case} -> {test_case}, "
@@ -385,35 +402,47 @@ def compute_suite_y_axis_presets(
     suite_data: dict[str, Any],
     epsilon: float = LOG_SCALE_EPSILON,
 ) -> dict[str, float | list[float]]:
-    """Compute one suite-global log-scale preset for exported uniform mode.
+    """Compute one suite-global log-scale preset for exported uniform mode."""
+    return compute_multi_suite_y_axis_preset([suite_data], epsilon=epsilon)
 
-    The exported HTML's ``Uniform y-scale`` option should make comparison easy
-    across every tab *and* every visibility state. We therefore gather the real
-    plotted values for both PBL and MSE across every complete combo that will be
-    exported, fold in the ``mean +/- std`` error-bar extent, and build one
-    shared log-scale range from those values.
+
+def compute_multi_suite_y_axis_preset(
+    suite_data_list: list[dict[str, Any]],
+    epsilon: float = LOG_SCALE_EPSILON,
+) -> dict[str, float | list[float]]:
+    """Compute one shared log-scale preset across multiple exported suites.
+
+    Empty bar slots are represented by NaN in the metric matrices and are
+    intentionally ignored when computing the shared y-axis bounds.
     """
-    combo_order = suite_data.get("combo_order", [])
-    if not combo_order:
-        raise ValueError("Suite data does not contain any complete combos.")
+    if not suite_data_list:
+        raise ValueError("At least one suite is required to compute a y-axis preset.")
 
     lower_bound: float | None = None
     upper_bound: float | None = None
 
-    for combo_key in combo_order:
-        combo = suite_data["combos"][combo_key]
-        for metric_key in (combo["pbl_metric_key"], combo["mse_metric_key"]):
-            metric_data = build_metric_matrices(combo, metric_key)
-            lower = np.clip(metric_data["means"] - metric_data["stds"], epsilon, None)
-            upper = metric_data["means"] + metric_data["stds"]
+    for suite_data in suite_data_list:
+        combo_order = suite_data.get("combo_order", [])
+        if not combo_order:
+            raise ValueError("Suite data does not contain any complete combos.")
 
-            combo_lower = float(np.min(lower))
-            combo_upper = float(np.max(upper))
-            lower_bound = combo_lower if lower_bound is None else min(lower_bound, combo_lower)
-            upper_bound = combo_upper if upper_bound is None else max(upper_bound, combo_upper)
+        for combo_key in combo_order:
+            combo = suite_data["combos"][combo_key]
+            for metric_key in (combo["pbl_metric_key"], combo["mse_metric_key"]):
+                metric_data = build_metric_matrices(combo, metric_key)
+                lower = np.clip(metric_data["means"] - metric_data["stds"], epsilon, None)
+                upper = metric_data["means"] + metric_data["stds"]
+                finite_mask = np.isfinite(lower) & np.isfinite(upper)
+                if not np.any(finite_mask):
+                    continue
+
+                combo_lower = float(np.min(lower[finite_mask]))
+                combo_upper = float(np.max(upper[finite_mask]))
+                lower_bound = combo_lower if lower_bound is None else min(lower_bound, combo_lower)
+                upper_bound = combo_upper if upper_bound is None else max(upper_bound, combo_upper)
 
     if lower_bound is None or upper_bound is None:
-        raise ValueError("Could not compute a suite-global y-axis preset.")
+        raise ValueError("Could not compute a multi-suite y-axis preset.")
 
     return _build_y_axis_preset(lower_bound, upper_bound, epsilon)
 
@@ -994,6 +1023,413 @@ def write_tabbed_interactive_export(
     return str(output_path)
 
 
+def write_multi_suite_tabbed_interactive_export(
+    suite_specs: list[dict[str, Any]],
+    output_html: str | Path,
+    page_title: str,
+    y_axis_preset: dict[str, float | list[float]] | None = None,
+) -> str:
+    """Write one self-contained HTML page with suite tabs and nested combo tabs."""
+    if not suite_specs:
+        raise ValueError("At least one suite specification is required.")
+
+    _load_plotly_go()
+    from plotly.offline import get_plotlyjs
+
+    output_path = Path(output_html).resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    plotly_js = get_plotlyjs()
+    suite_button_html_parts = []
+    suite_panel_html_parts = []
+
+    global_scale_controls_html = ""
+    if y_axis_preset:
+        preset_json = html.escape(json.dumps(y_axis_preset, separators=(",", ":")), quote=True)
+        global_scale_controls_html = (
+            f'<div class="page-control-row">'
+            f'<div id="global-scale-controls" class="scale-mode-controls" '
+            f'data-y-preset="{preset_json}" '
+            f'data-active-scale-mode="auto">'
+            f'<span class="control-label">Y scale</span>'
+            f'<button type="button" class="scale-mode-button is-active" data-scale-mode="auto">Auto y-scale</button>'
+            f'<button type="button" class="scale-mode-button" data-scale-mode="uniform">Uniform y-scale</button>'
+            f'</div>'
+            f'</div>'
+        )
+
+    for suite_index, suite_spec in enumerate(suite_specs):
+        suite_label = str(suite_spec["label"])
+        suite_id = str(suite_spec.get("suite_id", f"suite-{suite_index}"))
+        combo_specs = list(suite_spec.get("tab_specs", []))
+        suite_metadata = list(suite_spec.get("metadata", []))
+        if not combo_specs:
+            raise ValueError(f"Suite {suite_label!r} is missing tab_specs.")
+
+        suite_button_class = "suite-tab-button is-active" if suite_index == 0 else "suite-tab-button"
+        suite_panel_class = "suite-tab-panel is-active" if suite_index == 0 else "suite-tab-panel"
+        suite_button_html_parts.append(
+            f'<button class="{suite_button_class}" data-suite-target="{html.escape(suite_id)}">{html.escape(suite_label)}</button>'
+        )
+
+        suite_metadata_html = ""
+        if suite_metadata:
+            items = "".join(
+                f"<li><strong>{html.escape(str(key))}:</strong> {html.escape(str(value))}</li>"
+                for key, value in suite_metadata
+            )
+            suite_metadata_html = f'<ul class="metadata-list suite-metadata-list">{items}</ul>'
+
+        combo_button_html_parts = []
+        combo_panel_html_parts = []
+
+        for combo_index, combo_spec in enumerate(combo_specs):
+            combo_label = str(combo_spec["label"])
+            combo_id = str(combo_spec.get("tab_id", f"{suite_id}-combo-{combo_index}"))
+            combo_panel_id = f"{suite_id}__{combo_id}"
+            figure = combo_spec["figure"]
+            combo_metadata = list(combo_spec.get("metadata", []))
+            combo_button_class = "combo-tab-button is-active" if combo_index == 0 else "combo-tab-button"
+            combo_panel_class = "combo-tab-panel is-active" if combo_index == 0 else "combo-tab-panel"
+
+            combo_button_html_parts.append(
+                f'<button class="{combo_button_class}" data-suite-id="{html.escape(suite_id)}" data-combo-target="{html.escape(combo_panel_id)}">{html.escape(combo_label)}</button>'
+            )
+
+            combo_metadata_html = ""
+            if combo_metadata:
+                items = "".join(
+                    f"<li><strong>{html.escape(str(key))}:</strong> {html.escape(str(value))}</li>"
+                    for key, value in combo_metadata
+                )
+                combo_metadata_html = f'<ul class="metadata-list">{items}</ul>'
+
+            figure_html = figure.to_html(
+                full_html=False,
+                include_plotlyjs=False,
+                config={"responsive": True},
+                div_id=f"plotly-{combo_panel_id}",
+            )
+            combo_panel_html_parts.append(
+                f'<section id="{html.escape(combo_panel_id)}" class="{combo_panel_class}">'
+                f'<h2>{html.escape(combo_label)}</h2>'
+                f'{combo_metadata_html}'
+                f'{figure_html}'
+                f'</section>'
+            )
+
+        suite_panel_html_parts.append(
+            f'<section id="{html.escape(suite_id)}" class="{suite_panel_class}">'
+            f'<h2 class="suite-heading">{html.escape(suite_label)}</h2>'
+            f'{suite_metadata_html}'
+            f'<div class="combo-tab-row">{"".join(combo_button_html_parts)}</div>'
+            f'<div class="combo-tab-panels">{"".join(combo_panel_html_parts)}</div>'
+            f'</section>'
+        )
+
+    html_text = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{html.escape(page_title)}</title>
+  <style>
+    :root {{
+      --bg: #f6f3ee;
+      --fg: #182026;
+      --muted: #5b6570;
+      --line: #d6d0c8;
+      --tab-bg: #ebe4d7;
+      --tab-active: #1f4f46;
+      --tab-active-fg: #ffffff;
+      --card: #ffffff;
+      --subtab-bg: #f3ede3;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      background: linear-gradient(180deg, #f2eee7 0%, #faf8f4 100%);
+      color: var(--fg);
+      font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    }}
+    main {{
+      max-width: 1800px;
+      margin: 0 auto;
+      padding: 2rem;
+    }}
+    h1 {{
+      margin: 0 0 0.5rem 0;
+      font-size: 2.1rem;
+    }}
+    p.lede {{
+      margin: 0 0 1.5rem 0;
+      color: var(--muted);
+      max-width: 75rem;
+    }}
+    .page-control-row {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin: 0 0 1rem 0;
+    }}
+    .suite-tab-row, .combo-tab-row {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }}
+    .suite-tab-row {{
+      margin-bottom: 1rem;
+    }}
+    .combo-tab-row {{
+      margin: 0 0 1rem 0;
+    }}
+    .suite-tab-button, .combo-tab-button {{
+      border: 1px solid var(--line);
+      color: var(--fg);
+      border-radius: 999px;
+      font: inherit;
+      cursor: pointer;
+      transition: transform 120ms ease, background 120ms ease;
+    }}
+    .suite-tab-button {{
+      background: var(--tab-bg);
+      padding: 0.65rem 1rem;
+    }}
+    .combo-tab-button {{
+      background: var(--subtab-bg);
+      padding: 0.55rem 0.95rem;
+    }}
+    .suite-tab-button:hover, .combo-tab-button:hover {{
+      transform: translateY(-1px);
+    }}
+    .suite-tab-button.is-active, .combo-tab-button.is-active {{
+      background: var(--tab-active);
+      color: var(--tab-active-fg);
+      border-color: var(--tab-active);
+    }}
+    .suite-tab-panel, .combo-tab-panel {{
+      display: none;
+    }}
+    .suite-tab-panel.is-active, .combo-tab-panel.is-active {{
+      display: block;
+    }}
+    .suite-tab-panel {{
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 1.25rem;
+      box-shadow: 0 14px 40px rgba(24, 32, 38, 0.08);
+    }}
+    .suite-heading {{
+      margin-top: 0;
+      margin-bottom: 0.5rem;
+      font-size: 1.45rem;
+    }}
+    .combo-tab-panel h2 {{
+      margin-top: 0;
+      margin-bottom: 0.5rem;
+      font-size: 1.25rem;
+    }}
+    .metadata-list {{
+      margin: 0 0 1rem 0;
+      padding-left: 1.2rem;
+      color: var(--muted);
+    }}
+    .suite-metadata-list {{
+      margin-bottom: 1.1rem;
+    }}
+    .scale-mode-controls {{
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }}
+    .control-label {{
+      font-weight: 700;
+      color: var(--muted);
+      margin-right: 0.1rem;
+    }}
+    .scale-mode-button {{
+      border: 1px solid var(--line);
+      background: #f8f4ec;
+      color: var(--fg);
+      border-radius: 999px;
+      padding: 0.45rem 0.85rem;
+      font: inherit;
+      cursor: pointer;
+    }}
+    .scale-mode-button.is-active {{
+      background: #335f59;
+      color: #ffffff;
+      border-color: #335f59;
+    }}
+  </style>
+  <script>{plotly_js}</script>
+</head>
+<body>
+  <main>
+    <h1>{html.escape(page_title)}</h1>
+    <p class="lede">This page combines the Normal and Branch Perturbation April suites. Use the top-level tabs to switch suites, the nested tabs to switch model and training-loss families, and the shared toggle to keep one common y-scale across every plot.</p>
+    {global_scale_controls_html}
+    <div class="suite-tab-row">{"".join(suite_button_html_parts)}</div>
+    <div class="suite-tab-panels">{"".join(suite_panel_html_parts)}</div>
+  </main>
+  <script>
+    const suiteButtons = Array.from(document.querySelectorAll('.suite-tab-button'));
+    const suitePanels = Array.from(document.querySelectorAll('.suite-tab-panel'));
+    const comboButtons = Array.from(document.querySelectorAll('.combo-tab-button'));
+    const comboPanels = Array.from(document.querySelectorAll('.combo-tab-panel'));
+    const globalScaleControl = document.getElementById('global-scale-controls');
+
+    function getAllPlots() {{
+      return Array.from(document.querySelectorAll('.plotly-graph-div'));
+    }}
+
+    function getVisibleComboPanels() {{
+      return Array.from(document.querySelectorAll('.suite-tab-panel.is-active .combo-tab-panel.is-active'));
+    }}
+
+    function toPlotlyLogRange(preset) {{
+      if (Array.isArray(preset.plotly_log_range) && preset.plotly_log_range.length === 2) {{
+        return preset.plotly_log_range;
+      }}
+      const lower = Math.max(Number(preset.lower), Number(preset.epsilon || 1e-12));
+      const upper = Math.max(Number(preset.upper), lower);
+      return [Math.log10(lower), Math.log10(upper)];
+    }}
+
+    function getActiveScaleMode() {{
+      return globalScaleControl ? (globalScaleControl.dataset.activeScaleMode || 'auto') : 'auto';
+    }}
+
+    function setActiveScaleMode(activeMode) {{
+      if (!globalScaleControl) {{
+        return;
+      }}
+      globalScaleControl.dataset.activeScaleMode = activeMode;
+      globalScaleControl.querySelectorAll('.scale-mode-button').forEach((button) => {{
+        button.classList.toggle('is-active', button.dataset.scaleMode === activeMode);
+      }});
+    }}
+
+    function applyScaleModeToPlot(plot) {{
+      if (!window.Plotly || !plot) {{
+        return;
+      }}
+      if (getActiveScaleMode() === 'uniform') {{
+        const preset = globalScaleControl ? globalScaleControl._yPreset : null;
+        if (!preset) {{
+          return;
+        }}
+        window.Plotly.relayout(plot, {{
+          'yaxis.autorange': false,
+          'yaxis.range': toPlotlyLogRange(preset),
+        }});
+        return;
+      }}
+      window.Plotly.relayout(plot, {{
+        'yaxis.autorange': true,
+      }});
+    }}
+
+    function applyScaleModeToAllPlots() {{
+      getAllPlots().forEach((plot) => {{
+        applyScaleModeToPlot(plot);
+      }});
+    }}
+
+    function resizeVisiblePlots() {{
+      if (!window.Plotly) {{
+        return;
+      }}
+      getVisibleComboPanels().forEach((panel) => {{
+        panel.querySelectorAll('.plotly-graph-div').forEach((plot) => {{
+          window.Plotly.Plots.resize(plot);
+        }});
+      }});
+    }}
+
+    function activateSuite(targetId) {{
+      suiteButtons.forEach((button) => {{
+        button.classList.toggle('is-active', button.dataset.suiteTarget === targetId);
+      }});
+      suitePanels.forEach((panel) => {{
+        panel.classList.toggle('is-active', panel.id === targetId);
+      }});
+      window.requestAnimationFrame(() => {{
+        resizeVisiblePlots();
+        applyScaleModeToAllPlots();
+      }});
+    }}
+
+    function activateCombo(suiteId, targetId) {{
+      comboButtons.forEach((button) => {{
+        if (button.dataset.suiteId !== suiteId) {{
+          return;
+        }}
+        button.classList.toggle('is-active', button.dataset.comboTarget === targetId);
+      }});
+      const suitePanel = document.getElementById(suiteId);
+      if (!suitePanel) {{
+        return;
+      }}
+      suitePanel.querySelectorAll('.combo-tab-panel').forEach((panel) => {{
+        panel.classList.toggle('is-active', panel.id === targetId);
+      }});
+      window.requestAnimationFrame(() => {{
+        resizeVisiblePlots();
+        applyScaleModeToAllPlots();
+      }});
+    }}
+
+    suiteButtons.forEach((button) => {{
+      button.addEventListener('click', () => activateSuite(button.dataset.suiteTarget));
+    }});
+
+    comboButtons.forEach((button) => {{
+      button.addEventListener('click', () => activateCombo(button.dataset.suiteId, button.dataset.comboTarget));
+    }});
+
+    if (globalScaleControl) {{
+      globalScaleControl._yPreset = JSON.parse(globalScaleControl.dataset.yPreset || '{{}}');
+      globalScaleControl.querySelectorAll('.scale-mode-button').forEach((button) => {{
+        button.addEventListener('click', () => {{
+          setActiveScaleMode(button.dataset.scaleMode);
+          window.requestAnimationFrame(() => {{
+            resizeVisiblePlots();
+            applyScaleModeToAllPlots();
+          }});
+        }});
+      }});
+    }}
+
+    getAllPlots().forEach((plot) => {{
+      if (!plot || !plot.on) {{
+        return;
+      }}
+      const refreshGlobalScale = () => {{
+        if (getActiveScaleMode() !== 'uniform') {{
+          return;
+        }}
+        window.requestAnimationFrame(() => applyScaleModeToAllPlots());
+      }};
+      plot.on('plotly_buttonclicked', refreshGlobalScale);
+      plot.on('plotly_restyle', refreshGlobalScale);
+    }});
+
+    window.requestAnimationFrame(() => {{
+      resizeVisiblePlots();
+      applyScaleModeToAllPlots();
+    }});
+  </script>
+</body>
+</html>
+"""
+    output_path.write_text(html_text, encoding="utf-8")
+    return str(output_path)
+
+
 def write_interactive_exports(
 
     figures: dict[str, Any],
@@ -1047,7 +1483,7 @@ def _select_best_records_for_model_task(
     task: str,
     loss_family: str,
     expected_seeds: tuple[int, ...],
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     candidate_run_dirs = sorted(
         {
             config_path.parent
@@ -1079,18 +1515,37 @@ def _select_best_records_for_model_task(
             )
         grouped[(record["train_case"], record["seed"])] .append(record)
 
-    selected_records = []
+    model_slug = resolved_model_slug or _normalize_slug(model_dir.name)
+    selected_records: list[dict[str, Any]] = []
+    skipped_train_cases: list[dict[str, str]] = []
     train_cases = sorted({train_case for train_case, _ in grouped}, key=_case_sort_key)
+
     for train_case in train_cases:
-        seed_keys = tuple(sorted(seed for candidate_train_case, seed in grouped if candidate_train_case == train_case))
-        if seed_keys != expected_seeds:
-            raise ValueError(
-                f"Expected seeds {expected_seeds} for {task} / {resolved_model_slug} / {train_case}, found {seed_keys}"
+        seed_keys = tuple(
+            sorted(
+                seed
+                for candidate_train_case, seed in grouped
+                if candidate_train_case == train_case
             )
+        )
+        if seed_keys != expected_seeds:
+            skipped_train_cases.append(
+                {
+                    "train_case": train_case,
+                    "reason": (
+                        f"Expected seeds {expected_seeds} for {task} / {model_slug} / {train_case}, found {seed_keys}"
+                    ),
+                }
+            )
+            continue
         for seed in expected_seeds:
             selected_records.append(_pick_best_candidate(grouped[(train_case, seed)]))
 
-    return selected_records
+    return {
+        "model_slug": model_slug,
+        "selected_records": selected_records,
+        "skipped_train_cases": skipped_train_cases,
+    }
 
 
 def _pick_best_candidate(candidates: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1523,6 +1978,7 @@ __all__ = [
     "DEFAULT_EXPECTED_SEEDS",
     "PBL_METRIC",
     "build_metric_matrices",
+    "compute_multi_suite_y_axis_preset",
     "compute_suite_y_axis_presets",
     "load_run_family",
     "load_run_suite",
@@ -1530,5 +1986,6 @@ __all__ = [
     "plot_grouped_bar_chart_interactive",
     "plot_metric_toggle_chart",
     "write_interactive_exports",
+    "write_multi_suite_tabbed_interactive_export",
     "write_tabbed_interactive_export",
 ]
