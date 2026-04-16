@@ -1,0 +1,79 @@
+config_type: simple_batch
+job_parameters:
+  time: "24:00:00"
+  p: "cpu-gpu-v100"
+  gpus: 1
+  body: "uv run __launch__"
+batch_name: graph_moe_v01_baseline_sweep
+
+dataset:
+  datasets:
+  - add_bus_type: false
+    case_name: _manual_list(case14_seeds, case30_seeds, case57_seeds, case118_seeds)
+    model: PFNet
+    name: pfdeltaPFNet
+    root_dir: /mnt/home/donti-group-shared/hf_pfdelta_data
+    split: train
+    task: 3.1
+    transform: pfnet_data_mean0_var1
+  - add_bus_type: false
+    case_name: _manual_list(case14_seeds, case30_seeds, case57_seeds, case118_seeds)
+    model: PFNet
+    name: pfdeltaPFNet
+    root_dir: /mnt/home/donti-group-shared/hf_pfdelta_data
+    split: val
+    task: 3.1
+    transform: pfnet_data_mean0_var1
+
+functional:
+  config: moe_variants/graph_moe_v01_baseline
+  cpu: false
+  is_debug: false
+  run_location: runs/moe_variants/graph_moe_v01_baseline
+  run_name: graph_moe_v01_baseline_seed_%seed_case_%normalized_case_name
+  seed: _manual_list(42, 43)
+  trainer_name: gnn_trainer
+
+model:
+  name: graph_moe_v01_baseline
+  in_dim: 6
+  hidden_dim: _manual_list(128, 256)
+  out_dim: 6
+  n_layers: _manual_list(4, 6)
+  n_experts: _manual_list(4, 6)
+  top_k: _manual_list(1, 2)
+
+optim:
+  optimizer:
+    name: Adam
+    lr: _manual_list(0.0005, 0.001)
+  train_params:
+    batch_size: 64
+    epochs: 80
+    train_loss:
+    - name: GNNTorchLoss
+      output_name: bus__y
+      torch_nn_name: MSELoss
+    - name: pfn_masked_mse
+      regularize: false
+    - name: pfn_masked_mse
+      regularize: true
+    - model: PFNet
+      name: universal_power_balance
+  val_params:
+    batch_size: 64
+    report_every: 5
+    early_stop:
+      decrease_by: 0.01
+      decrease_for: 10
+      needs_best_every: 15
+    val_loss:
+    - name: pfn_masked_mse
+      regularize: false
+    - name: pfn_masked_mse
+      regularize: true
+    - name: GNNTorchLoss
+      output_name: bus__y
+      torch_nn_name: MSELoss
+    - model: PFNet
+      name: universal_power_balance

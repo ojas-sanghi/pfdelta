@@ -1,0 +1,63 @@
+config_type: simple_batch
+job_parameters:
+  time: "24:00:00"
+  p: "cpu-gpu-v100"
+  gpus: 1
+  body: "uv run __launch__"
+batch_name: moe_variants_master_batch
+
+dataset:
+  datasets:
+  - add_bus_type: false
+    case_name: case118_seeds
+    model: PFNet
+    name: pfdeltaPFNet
+    root_dir: /mnt/home/donti-group-shared/hf_pfdelta_data
+    split: train
+    task: 3.1
+    transform: pfnet_data_mean0_var1
+  - add_bus_type: false
+    case_name: case118_seeds
+    model: PFNet
+    name: pfdeltaPFNet
+    root_dir: /mnt/home/donti-group-shared/hf_pfdelta_data
+    split: val
+    task: 3.1
+    transform: pfnet_data_mean0_var1
+
+functional:
+  config: moe_variants/master
+  cpu: false
+  is_debug: false
+  run_location: runs/moe_variants/master
+  run_name: model_%name_seed_%seed
+  seed: _manual_list(42)
+  trainer_name: gnn_trainer
+
+model:
+  name: _manual_list(graph_moe_v01_baseline, graph_moe_v02_top1_hard, graph_moe_v03_dense, graph_moe_v04_noisy, graph_moe_v05_prior_heavy, graph_moe_v06_prior_free, graph_moe_v07_hop_mix, graph_moe_v08_gat_mix, graph_moe_v09_switch_sparse, graph_moe_v10_router_no_size, graph_moe_v11_many_experts, graph_moe_v12_deep_experts, graph_moe_v13_wide_router, graph_moe_v14_small_router, graph_moe_v15_case_bucket, graph_moe_v16_balanced_sparse, graph_moe_v17_graphconv_only, graph_moe_v18_sage_only, graph_moe_v19_gcn_only, graph_moe_v20_tag_only, graph_moe_v21_mowst_manual, graph_moe_v22_mowst_learned, graph_moe_v23_combo_noisy_hopmix, graph_moe_v24_combo_dense_hybrid)
+  in_dim: 6
+  hidden_dim: 256
+  out_dim: 6
+  n_layers: 4
+  n_experts: 4
+  top_k: 2
+
+optim:
+  optimizer:
+    name: Adam
+    lr: 0.0005
+  train_params:
+    batch_size: 64
+    epochs: 60
+    train_loss:
+    - name: GNNTorchLoss
+      output_name: bus__y
+      torch_nn_name: MSELoss
+  val_params:
+    batch_size: 64
+    report_every: 5
+    val_loss:
+    - name: GNNTorchLoss
+      output_name: bus__y
+      torch_nn_name: MSELoss
