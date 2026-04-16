@@ -1,0 +1,74 @@
+config_type: simple_batch
+job_parameters:
+  time: "08:00:00"
+  p: "cpu-gpu-v100"
+  gpus: 1
+  body: "uv run __launch__"
+batch_name: moe_weak_strong_family_batch
+model:
+  name: _manual_list(graph_moe_v16_confidence_weak_strong, graph_moe_v17_confidence_noisy, graph_moe_v18_confidence_hybrid, graph_moe_v19_dense_confidence, graph_moe_v20_adaptive_confidence, graph_moe_v24_full_combo)
+  in_dim: 6
+  hidden_dim: 256
+  out_dim: 6
+  n_layers: 5
+  n_experts: 4
+  top_k: 2
+  router_hidden_dim: 128
+
+
+dataset:
+  datasets:
+  - add_bus_type: false
+    case_name: _connected_list(data -- case14_seeds, case30_seeds, case57_seeds, case118_seeds | case14, case30, case57, case118)
+    model: PFNet
+    name: pfdeltaPFNet
+    root_dir: /mnt/home/donti-group-shared/pfdelta_data
+    split: train
+    task: 3.1
+    transform: pfnet_data_mean0_var1
+  - add_bus_type: false
+    case_name: _connected_list(data -- case14_seeds, case30_seeds, case57_seeds, case118_seeds | case14, case30, case57, case118)
+    model: PFNet
+    name: pfdeltaPFNet
+    root_dir: /mnt/home/donti-group-shared/pfdelta_data
+    split: val
+    task: 3.1
+    transform: pfnet_data_mean0_var1
+optim:
+  optimizer:
+    lr: 0.0005
+    name: Adam
+  train_params:
+    batch_size: 64
+    epochs: 60
+    train_loss:
+    - name: GNNTorchLoss
+      output_name: bus__y
+      torch_nn_name: MSELoss
+    - name: pfn_masked_mse
+      regularize: false
+    - name: pfn_masked_mse
+      regularize: true
+  val_params:
+    batch_size: 64
+    early_stop:
+      decrease_by: 0.01
+      decrease_for: 10
+      needs_best_every: 15
+    report_every: 5
+    val_loss:
+    - name: pfn_masked_mse
+      regularize: false
+    - name: pfn_masked_mse
+      regularize: true
+    - name: GNNTorchLoss
+      output_name: bus__y
+      torch_nn_name: MSELoss
+functional:
+  config: moe_variants
+  cpu: false
+  is_debug: false
+  run_location: ojas_moe_variants
+  run_name: model=%name_case=%normalized_case_name_seed=%seed
+  seed: _manual_list(42, 43)
+  trainer_name: gnn_trainer
